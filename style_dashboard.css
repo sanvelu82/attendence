@@ -343,7 +343,7 @@ ul li {
     display: grid;
     /* Fixed width for each card, adjusted to be smaller */
     grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); /* Min width reduced */
-    gap: 20px; /* Slightly reduced gap */
+    gap: 10px; /* Slightly reduced gap */
     padding: 20px;
     background-color: #eef2f7;
     border-radius: 12px;
