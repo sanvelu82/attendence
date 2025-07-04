@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login - School Portal</title>
+  <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js" type="module"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js" type="module"></script>
+  <style>
+    body { font-family: Arial; padding: 30px; }
+    input { margin: 10px 0; padding: 10px; width: 100%; }
+    button { padding: 10px 20px; }
+  </style>
+</head>
+<body>
+  <h2>Login (Admin / Faculty)</h2>
+  <input type="email" id="email" placeholder="Email" />
+  <input type="password" id="password" placeholder="Password" />
+  <button onclick="login()">Login</button>
+
+  <p id="status"></p>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAEXiIyizWAC9u3UAKBKMDyFkjCjUinhY",
+      authDomain: "attendence-9a3fe.firebaseapp.com",
+      projectId: "attendence-9a3fe",
+      storageBucket: "attendence-9a3fe.appspot.com",
+      messagingSenderId: "95924617694",
+      appId: "1:95924617694:web:9b4db3206c39ee4d8fdd4f"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    window.login = function () {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      signInWithEmailAndPassword(auth, email, password)
+        .then(userCredential => {
+          // ✅ Login success
+          const user = userCredential.user;
+          localStorage.setItem("uid", user.uid);
+          document.getElementById("status").innerText = "✅ Login successful!";
+          window.location.href = "check-role.html"; // Redirect to role check
+        })
+        .catch(error => {
+          document.getElementById("status").innerText = "❌ " + error.message;
+	alert(" Check Your Internet Connection");
+        });
+    }
+  </script>
+</body>
+</html>

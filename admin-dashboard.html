@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script>
+        // !! IMPORTANT: Replace "OgCmeeGJpJlpHpeXq" with your actual EmailJS Public Key !!
+        emailjs.init("OgCmeeGJpJlpHpeXq"); 
+    </script>
+
+    <meta charset="UTF-8">
+    <title>Admin Dashboard - School Attendance</title>
+    <link rel="stylesheet" href="style_dashboard.css">
+    
+    <script type="module">
+        // GLOBAL variable for captured image, declared once for consistency
+        let capturedImageBlob = null; 
+        let currentVideoStream = null; // To manage camera stream across functions
+
+        import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signOut, signInWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updatePassword } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+        import { getDatabase, ref, get, set, remove, update } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
+
+        const firebaseConfig = {
+            // !! IMPORTANT: Replace with your actual Firebase config details !!
+            apiKey: "AIzaSyAAEXiIyizWAC9u3UAKBKMDyFkjCjUinhY", 
+            authDomain: "attendence-9a3fe.firebaseapp.com",
+            databaseURL: "https://attendence-9a3fe-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "attendence-9a3fe",
+            storageBucket: "attendence-9a3fe.appspot.com",
+            messagingSenderId: "95924617694",
+            appId: "1:95924617694:web:9b4db3206c39ee4d8fdd4f"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+        const db = getDatabase();
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const roleRef = ref(db, `users/${user.uid}/role`);
+                get(roleRef).then(snapshot => {
+                    const role = snapshot.val();
+                    if (!role || role !== "admin") {
+                        alert("Access Denied: Admins Only");
+                        signOut(auth).then(() => window.location.href = "index.html");
+                    }
+                }).catch(error => {
+                    console.error("Error checking role:", error);
+                    signOut(auth).then(() => window.location.href = "index.html");
+                });
+            } else {
+                window.location.href = "index.html";
+            }
+        });
+
+        // --- Faculty Verification & OTP Handling ---
+        window.startFacultyVerification = function () {
+            const email = document.getElementById("verifyEmail").value.trim();
+            if (!email) {
+                alert("Please enter the faculty email.");
+                return;
+            }
+
+            const encodedEmail = btoa(email);
+            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
+                if (!snapshot.exists()) {
+                    alert("❌ No pending faculty found with this email.");
+                    return;
+                }
+
+                const data = snapshot.val();
+                showOTPModal(email, data.otp, data.name);
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        window.startFacultyVerificationDirect = function(email) {
+            const encodedEmail = btoa(email);
+            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
+                if (!snapshot.exists()) {
+                    alert("❌ No pending faculty found with this email.");
+                    return;
+                }
+                const data = snapshot.val();
+                showOTPModal(email, data.otp, data.name);
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        window.startFacultyVerificationFromList = function (email) {
+            const encodedEmail = btoa(email);
+            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
+                if (!snapshot.exists()) {
+                    alert("❌ No pending faculty found with this email.");
+                    return;
+                }
+
+                const data = snapshot.val();
+                showOTPModal(email, data.otp, data.name);
+            }).catch(err => {
+                alert("❌ Error: " + err.message);
+            });
+        };
+
+        window.showOTPModal = function(email, correctOtp, name) {
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>Complete Faculty Verification</h3>
+                    <p>Email: <b>${email}</b></p>
+                    <input type="text" id="otpInput" placeholder="Enter OTP received by faculty" />
+                    <input type="password" id="newPasswordInput" placeholder="Set Password" />
+                    <button onclick="verifyAndCreateFaculty('${email}', '${correctOtp}', '${name}')">Verify & Create</button>
+                </div>`;
+            document.body.appendChild(modal);
+        };
+
+        window.showOTPInput = function (email, otp, name) {
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>Verify Email</h3>
+                    <p>Enter the OTP sent to <b>${email}</b></p>
+                    <input type="text" id="otpInput" placeholder="Enter OTP" />
+                    <input type="password" id="newPasswordInput" placeholder="Set Password" />
+                    <button onclick="verifyAndCreateFaculty('${email}', '${otp}', '${name}')">Verify & Create</button>
+                </div>`;
+            document.body.appendChild(modal);
+        };
+
+        window.verifyAndCreateFaculty = async function(email, correctOtp, name) {
+            const enteredOtp = document.getElementById("otpInput").value.trim();
+            const password = document.getElementById("newPasswordInput").value;
+
+            if (enteredOtp !== correctOtp) {
+                alert("❌ Incorrect OTP");
+                return;
+            }
+
+            if (!password || password.length < 6) {
+                alert("⚠️ Password must be at least 6 characters");
+                return;
+            }
+
+            const tempApp = initializeApp(firebaseConfig, "TempAppForCreate");
+            const tempAuth = getAuth(tempApp);
+
+            try {
+                const userCred = await createUserWithEmailAndPassword(tempAuth, email, password);
+                const uid = userCred.user.uid;
+
+                // Fetch the full pending faculty data, including profilePhoto
+                const pendingFacultySnapshot = await get(ref(db, `pending_faculties/${btoa(email)}`));
+                const pendingFacultyData = pendingFacultySnapshot.val();
+
+                await set(ref(db, `users/${uid}`), {
+                    name: pendingFacultyData.name,
+                    email: pendingFacultyData.email,
+                    mobile: pendingFacultyData.mobile || "", // Ensure all fields are saved
+                    major: pendingFacultyData.major || "",
+                    staffId: pendingFacultyData.staffId || "",
+                    doj: pendingFacultyData.doj || "",
+                    classSection: pendingFacultyData.classSection || "",
+                    gender: pendingFacultyData.gender || "",
+                    address: pendingFacultyData.address || "",
+                    workingType: pendingFacultyData.workingType || "",
+                    role: "faculty",
+                    profilePhoto: pendingFacultyData.profilePhoto // Save the profile photo here
+                });
+
+                await remove(ref(db, `pending_faculties/${btoa(email)}`));
+
+                alert("✅ Faculty successfully added.");
+                document.querySelector(".modal").remove();
+                showFaculties();
+                showPendingFaculties();
+            } catch (error) {
+                alert("❌ Error: " + error.message);
+            } finally {
+                await deleteApp(tempApp);
+            }
+        };
+
+        window.resendOtp = function(email, name) {
+            const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+            const encodedEmail = btoa(email);
+
+            const tempRef = ref(db, `pending_faculties/${encodedEmail}`);
+            update(tempRef, {
+                otp: newOtp,
+                updatedAt: Date.now()
+            }).then(() => {
+                // !! IMPORTANT: Replace "service_bb1lh51" and "template_0kq074a" with your actual EmailJS Service ID and Template ID !!
+                emailjs.send("service_bb1lh51", "template_0kq074a", {
+                    to_email: email,
+                    from_name: "Admin Panel",
+                    to_name: name,
+                    message: `Hi ${name}, your new OTP is: ${newOtp}`
+                }).then(() => {
+                    alert(`📩 OTP resent to ${email}`);
+                    showPendingFaculties();
+                }).catch(err => {
+                    alert("❌ Failed to send OTP: " + JSON.stringify(err));
+                });
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        window.removePendingFaculty = function(email) {
+            if (!confirm(`⚠️ Remove pending faculty: ${email}?`)) return;
+            const encodedEmail = btoa(email);
+            remove(ref(db, `pending_faculties/${encodedEmail}`)).then(() => {
+                alert("✅ Pending faculty removed.");
+                showPendingFaculties();
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        // --- Profile Photo Handling (Unified & Interactive) ---
+        window.openPhotoDialog = function () {
+            const dialog = document.createElement("div");
+            dialog.className = "modal";
+            dialog.innerHTML = `
+                <div class="modal-content" style="text-align:center;">
+                    <span class="close" onclick="closePhotoDialog()">&times;</span>
+                    <h3>Upload or Capture Profile Photo</h3>
+                    
+                    <input type="file" accept="image/*" onchange="handleFileUpload(event)" /><br><br>
+                    <video id="cameraStream" width="280" height="210" autoplay playsinline style="border: 1px solid #ccc; background-color: #eee;"></video><br>
+                    <button onclick="capturePhotoFromCamera()">📸 Capture Photo</button><br><br>
+                    <button onclick="closePhotoDialog()">✅ Done</button>
+                </div>`;
+            document.body.appendChild(dialog);
+            startCamera(); // Automatically start camera when dialog opens
+        };
+
+        function startCamera() {
+            const video = document.getElementById("cameraStream");
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Your browser does not support camera access.");
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    currentVideoStream = stream;
+                    video.srcObject = stream;
+                    video.play(); // Start playing the stream
+                })
+                .catch(err => {
+                    console.error("Camera access error:", err);
+                    alert("❌ Unable to access camera. Please check permissions: " + err.message);
+                    video.style.display = 'none'; // Hide video if camera fails
+                    // Optionally hide the capture button if camera fails
+                    const captureButton = document.querySelector('.modal-content button[onclick="capturePhotoFromCamera()"]');
+                    if (captureButton) {
+                        captureButton.style.display = 'none';
+                    }
+                });
+        }
+
+        function stopCamera() {
+            if (currentVideoStream) {
+                currentVideoStream.getTracks().forEach(track => track.stop());
+                currentVideoStream = null;
+            }
+            const video = document.getElementById("cameraStream");
+            if (video) {
+                video.srcObject = null;
+            }
+        }
+
+        window.capturePhotoFromCamera = function () {
+            const video = document.getElementById("cameraStream");
+            if (!video.srcObject || video.videoWidth === 0) { // Check if video stream is active and has dimensions
+                alert("Camera not active or not granted permissions. Please ensure camera is on and try again.");
+                return;
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL("image/jpeg", 0.9); // Use JPEG for smaller size, 0.9 quality
+            
+            stopCamera(); // Stop camera after capturing
+            openPreviewModal(dataURL);
+        };
+
+        window.handleFileUpload = function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert("Please upload an image file.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                stopCamera(); // Stop camera if file is uploaded
+                openPreviewModal(reader.result);
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.openPreviewModal = function (dataUrl) {
+            // Close any previous preview modals to avoid stacking
+            document.querySelectorAll(".modal").forEach(m => {
+                if (m.querySelector('#previewImg')) m.remove();
+            });
+
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content" style="text-align:center">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>Preview & Confirm Photo</h3>
+                    <img id="previewImg" src="${dataUrl}" style="max-width:100%; max-height: 300px; border:1px solid #ccc; object-fit: contain;" /><br><br>
+                    <button onclick="confirmPhoto('${dataUrl}')">✅ Confirm Photo</button>
+                </div>`;
+            document.body.appendChild(modal);
+        };
+
+        window.confirmPhoto = function (dataURL) {
+            capturedImageBlob = dataURL; // Update the global capturedImageBlob
+            const photoPreview = document.getElementById("photoPreview");
+            const photoStatus = document.getElementById("photoStatus");
+
+            if (photoPreview) {
+                photoPreview.src = dataURL;
+                photoPreview.style.display = 'block'; // Make sure it's visible
+            }
+            if (photoStatus) {
+                photoStatus.textContent = "Photo selected!";
+                photoStatus.style.color = "#4CAF50";
+            }
+
+            alert("✅ Profile photo successfully selected.");
+            document.querySelectorAll(".modal").forEach(m => m.remove()); // Close all open modals
+        };
+
+        window.closePhotoDialog = function () {
+            stopCamera(); // Ensure camera is stopped when the dialog is closed
+            // Only remove the specific dialog if it's open, not all modals
+            const photoDialog = document.querySelector('.modal .modal-content h3:contains("Upload or Capture Profile Photo")').closest('.modal');
+            if (photoDialog) {
+                photoDialog.remove();
+            }
+        };
+
+        // --- Add Faculty Function (Updated) ---
+        window.addFaculty = function () {
+            const name = document.getElementById("facultyName").value.trim();
+            const email = document.getElementById("facultyEmail").value.trim();
+            const mobile = document.getElementById("facultyMobile").value.trim();
+            const major = document.getElementById("facultyMajor").value.trim();
+            const staffId = document.getElementById("facultyStaffId").value.trim();
+            const doj = document.getElementById("facultyDOJ").value;
+            const classSection = document.getElementById("facultyClassSection").value.trim();
+            const gender = document.getElementById("facultyGender").value;
+            const address = document.getElementById("facultyAddress").value.trim();
+            const workingType = document.getElementById("facultyWorkingType").value;
+
+            if (!name || !email || !mobile || !major || !staffId || !doj || !classSection || !gender || !address || !workingType) {
+                alert("Please fill all faculty details.");
+                return;
+            }
+
+            if (!capturedImageBlob || capturedImageBlob === "https://via.placeholder.com/150?text=No+Photo") {
+                alert("⚠️ Please select a profile photo.");
+                return;
+            }
+
+            console.log("Selected Photo DataURL:", capturedImageBlob);
+
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            const encodedEmail = btoa(email); // Correctly encode for Firebase path
+
+            // Save pending faculty data to Firebase
+            const tempRef = ref(db, `pending_faculties/${encodedEmail}`);
+            set(tempRef, {
+                name,
+                email,
+                mobile,
+                major,
+                staffId,
+                doj,
+                classSection,
+                gender,
+                address,
+                workingType,
+                otp,
+                profilePhoto: capturedImageBlob, // Save the captured image data
+                createdAt: Date.now()
+            }).then(() => {
+                // !! IMPORTANT: Replace with your actual EmailJS Service ID and Template ID !!
+                emailjs.send("service_bb1lh51", "template_0kq074a", {
+                    to_email: email,
+                    from_name: "Admin Panel",
+                    to_name: name,
+                    message: `Hi ${name}, your OTP is: ${otp}`
+                }).then(() => {
+                    alert(`✅ OTP sent to ${email}. Please ask the faculty to verify.`);
+                    showPendingFaculties();
+                }).catch(err => {
+                    alert(`❌ Failed to send OTP: ${JSON.stringify(err)}`);
+                });
+
+                // Show modal for OTP and password entry
+                showOTPInput(email, otp, name);
+
+                // Clear form inputs and reset photo preview
+                document.getElementById("facultyName").value = "";
+                document.getElementById("facultyEmail").value = "";
+                document.getElementById("facultyMobile").value = "";
+                document.getElementById("facultyMajor").value = "";
+                document.getElementById("facultyStaffId").value = "";
+                document.getElementById("facultyDOJ").value = "";
+                document.getElementById("facultyClassSection").value = "";
+                document.getElementById("facultyGender").value = "";
+                document.getElementById("facultyAddress").value = "";
+                document.getElementById("facultyWorkingType").value = "";
+                
+                capturedImageBlob = null; // Reset captured image
+                document.getElementById("photoPreview").src = "https://via.placeholder.com/150?text=No+Photo";
+                document.getElementById("photoStatus").textContent = "No photo selected";
+
+            }).catch((err) => {
+                alert("❌ Failed to save data: " + err.message);
+            });
+        };
+
+        // --- Faculty List & Management ---
+        window.showPendingFaculties = function () {
+            const pendingContainer = document.getElementById("pendingFacultyList");
+            pendingContainer.innerHTML = `
+                <table class="styled-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pendingFacultyTableBody"></tbody>
+                </table>
+            `;
+
+            const tableBody = document.getElementById("pendingFacultyTableBody");
+
+            get(ref(db, "pending_faculties")).then(snapshot => {
+                const data = snapshot.val();
+                if (!data) {
+                    tableBody.innerHTML = `<tr><td colspan="5">No pending faculties</td></tr>`;
+                    return;
+                }
+
+                for (let encodedEmail in data) {
+                    const faculty = data[encodedEmail];
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${faculty.name}</td>
+                        <td>${faculty.email}</td>
+                        <td>Pending Verification</td>
+                        <td>
+                            <button class="icon-btn" onclick="resendOtp('${faculty.email}', '${faculty.name}')">📩 Resend OTP</button>
+                            <button class="icon-btn" onclick="startFacultyVerificationFromList('${faculty.email}')">✅ Verify</button>
+                            <button class="icon-btn delete-btn" onclick="removePendingFaculty('${faculty.email}')">🗑️ Remove</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                }
+            });
+        };
+
+        window.showFaculties = function () {
+            const listContainer = document.getElementById("facultyList");
+            listContainer.innerHTML = `
+                <table class="styled-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="facultyTableBody"></tbody>
+                </table>
+            `;
+
+            const tableBody = document.getElementById("facultyTableBody");
+            get(ref(db, "users")).then(snapshot => {
+                const data = snapshot.val();
+                if (!data) { // Handle case where there are no users
+                    tableBody.innerHTML = `<tr><td colspan="3">No faculties registered.</td></tr>`;
+                    return;
+                }
+
+                let foundFaculty = false;
+                for (let uid in data) {
+                    if (data[uid].role === "faculty") {
+                        foundFaculty = true;
+                        const row = document.createElement("tr");
+                        row.innerHTML = `
+                            <td>${data[uid].name}</td>
+                            <td>${data[uid].email}</td>
+                            <td>
+                                <button class="icon-btn edit-btn" title="Edit" onclick="editFaculty('${uid}', '${data[uid].name}', '${data[uid].email}')"><span>✏️</span></button>
+                                <button class="icon-btn delete-btn" title="Remove" onclick="removeFaculty('${uid}')"><span>🗑️</span></button>
+                                <button class="icon-btn reset-btn" title="Reset Password" onclick="resetPassword('${data[uid].email}')"><span>🔑</span></button>
+                            </td>
+                        `;
+                        tableBody.appendChild(row);
+                    }
+                }
+                if (!foundFaculty) {
+                    tableBody.innerHTML = `<tr><td colspan="3">No faculties registered.</td></tr>`;
+                }
+            });
+        };
+
+        window.editFaculty = function(uid, name, email) {
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>Edit Faculty</h3>
+                    <label>Name</label>
+                    <input id="editName" type="text" value="${name}">
+                    <label>Email</label>
+                    <input id="editEmail" type="email" value="${email}" disabled>
+                    <label>Current Password</label>
+                    <input id="editCurrentPass" type="password" placeholder="Current Password">
+                    <label>New Password</label>
+                    <input id="editNewPass" type="password" placeholder="New Password">
+                    <div class="modal-actions">
+                        <button onclick="submitEditFaculty('${uid}', '${email}')">Update</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal);
+        };
+
+        window.submitEditFaculty = async function(uid, oldEmail) {
+            const name = document.getElementById("editName").value.trim();
+            const newPassword = document.getElementById("editNewPass").value;
+            const currentPassword = document.getElementById("editCurrentPass").value;
+
+            if (!name) {
+                alert("Please enter a name.");
+                return;
+            }
+
+            const tempApp = initializeApp(firebaseConfig, "TempEditApp");
+            const tempAuth = getAuth(tempApp);
+
+            try {
+                if (currentPassword && newPassword) {
+                    const userCred = await signInWithEmailAndPassword(tempAuth, oldEmail, currentPassword);
+                    const user = userCred.user;
+                    await updatePassword(user, newPassword);
+                } else if (currentPassword || newPassword) {
+                    alert("To change password, both current and new passwords must be provided.");
+                    return;
+                }
+
+                await update(ref(db, `users/${uid}`), { name });
+
+                alert("✅ Faculty updated successfully.");
+                showFaculties();
+                document.querySelector(".modal").remove();
+            } catch (error) {
+                alert("❌ " + error.message);
+            } finally {
+                await deleteApp(tempApp);
+            }
+        };
+
+        window.resetPassword = function (email) {
+            if (!confirm("⚠️ Are you sure to send reset password link to this faculty?")) return;
+            sendPasswordResetEmail(auth, email)
+                .then(() => alert("✅ Password reset link sent to " + email))
+                .catch(err => alert("❌ " + err.message));
+        };
+
+        window.removeFaculty = function (uid) {
+            if (!confirm("⚠️ Are you sure you want to remove this faculty? This action is irreversible.")) return;
+            remove(ref(db, `users/${uid}`)).then(() => {
+                alert("✅ Faculty Removed");
+                showFaculties();
+            }).catch(err => alert("❌ Failed to remove faculty: " + err.message));
+        };
+
+        // --- Van Attendance & Dashboard Functions ---
+        function getFormattedDate(offsetDays = 0) {
+            const d = new Date();
+            d.setDate(d.getDate() - offsetDays);
+            return d.toISOString().split('T')[0];
+        }
+
+        window.showVanDetails = function (vanKey) {
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>${vanKey} - Students</h3>
+                    <label>Filter by Day:
+                        <select id="dayFilter">
+                            <option value="0">Today</option>
+                            <option value="1">1 Day Ago</option>
+                            <option value="2">2 Days Ago</option>
+                            <option value="3">3 Days Ago</option>
+                        </select>
+                    </label>
+                    <table class="styled-table">
+                        <thead><tr><th>Name</th><th>Class</th><th>Timestamp</th></tr></thead>
+                        <tbody id="modal-body"></tbody>
+                    </table>
+                </div>`;
+            document.body.appendChild(modal);
+
+            const modalBody = modal.querySelector("#modal-body");
+            const dayFilter = modal.querySelector("#dayFilter");
+            const attendanceRef = ref(db, `attendance/${vanKey}`);
+
+            function updateTable(offset) {
+                const targetDate = getFormattedDate(offset);
+                get(attendanceRef).then(snapshot => {
+                    const data = snapshot.val();
+                    modalBody.innerHTML = "";
+                    if (!data) {
+                        modalBody.innerHTML = `<tr><td colspan="3">No records</td></tr>`;
+                        return;
+                    }
+                    let found = false;
+                    for (let key in data) {
+                        const entry = data[key];
+                        if (entry.timestamp && entry.timestamp.startsWith(targetDate)) {
+                            modalBody.innerHTML += `<tr><td>${entry.student_name}</td><td>${entry.class}</td><td>${entry.timestamp}</td></tr>`;
+                            found = true;
+                        }
+                    }
+                    if (!found) modalBody.innerHTML = `<tr><td colspan="3">No students found for selected day</td></tr>`;
+                });
+            }
+
+            dayFilter.onchange = () => updateTable(Number(dayFilter.value));
+            updateTable(0); // Initial load for today
+        };
+
+        function displayAllVanSummaries() {
+            const vansContainer = document.getElementById("vans");
+            vansContainer.innerHTML = "";
+            const attendanceRoot = ref(db, "attendance");
+            get(attendanceRoot).then(snapshot => {
+                const vans = snapshot.val();
+                if (!vans) {
+                    vansContainer.innerHTML = "<p>No van attendance data available.</p>";
+                    return;
+                }
+
+                const today = getFormattedDate(0);
+
+                Object.keys(vans).forEach(vanKey => {
+                    const records = vans[vanKey];
+                    const count = Object.values(records || {}).filter(r => r.timestamp && r.timestamp.startsWith(today)).length;
+
+                    const container = document.createElement("div");
+                    container.className = "van-box";
+                    container.innerHTML = `
+                        <h3>${vanKey}</h3>
+                        <p>Total Students Today: ${count}</p>
+                        <button onclick="showVanDetails('${vanKey}')">Show Students</button>`;
+                    vansContainer.appendChild(container);
+                });
+            }).catch(error => {
+                console.error("Error fetching van summaries:", error);
+                vansContainer.innerHTML = `<p>Error loading van data: ${error.message}</p>`;
+            });
+        }
+
+       <!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <script>
+        // !! IMPORTANT: Replace "OgCmeeGJpJlpHpeXq" with your actual EmailJS Public Key !!
+        emailjs.init("OgCmeeGJpJlpHpeXq");
+    </script>
+
+    <meta charset="UTF-8">
+    <title>Admin Dashboard - School Attendance</title>
+    <link rel="stylesheet" href="style_dashboard.css">
+    
+    <script type="module">
+        // GLOBAL variable for captured image, declared once for consistency
+        let capturedImageBlob = null;
+        let currentVideoStream = null; // To manage camera stream across functions
+
+        import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signOut, signInWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updatePassword } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+        import { getDatabase, ref, get, set, remove, update } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
+
+        const firebaseConfig = {
+            // !! IMPORTANT: Replace with your actual Firebase config details !!
+            apiKey: "AIzaSyAAEXiIyizWAC9u3UAKBKMDyFkjCjUinhY",
+            authDomain: "attendence-9a3fe.firebaseapp.com",
+            databaseURL: "https://attendence-9a3fe-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "attendence-9a3fe",
+            storageBucket: "attendence-9a3fe.appspot.com",
+            messagingSenderId: "95924617694",
+            appId: "1:95924617694:web:9b4db3206c39ee4d8fdd4f"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth();
+        const db = getDatabase();
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const roleRef = ref(db, `users/${user.uid}/role`);
+                get(roleRef).then(snapshot => {
+                    const role = snapshot.val();
+                    if (!role || role !== "admin") {
+                        alert("Access Denied: Admins Only");
+                        signOut(auth).then(() => window.location.href = "index.html");
+                    }
+                }).catch(error => {
+                    console.error("Error checking role:", error);
+                    signOut(auth).then(() => window.location.href = "index.html");
+                });
+            } else {
+                window.location.href = "index.html";
+            }
+        });
+
+        // --- Faculty Verification & OTP Handling ---
+        window.startFacultyVerification = function () {
+            const email = document.getElementById("verifyEmail").value.trim();
+            if (!email) {
+                alert("Please enter the faculty email.");
+                return;
+            }
+
+            const encodedEmail = btoa(email);
+            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
+                if (!snapshot.exists()) {
+                    alert("❌ No pending faculty found with this email.");
+                    return;
+                }
+
+                const data = snapshot.val();
+                showOTPModal(email, data.otp, data.name);
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        window.startFacultyVerificationDirect = function(email) {
+            const encodedEmail = btoa(email);
+            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
+                if (!snapshot.exists()) {
+                    alert("❌ No pending faculty found with this email.");
+                    return;
+                }
+                const data = snapshot.val();
+                showOTPModal(email, data.otp, data.name);
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        window.startFacultyVerificationFromList = function (email) {
+            const encodedEmail = btoa(email);
+            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
+                if (!snapshot.exists()) {
+                    alert("❌ No pending faculty found with this email.");
+                    return;
+                }
+
+                const data = snapshot.val();
+                showOTPModal(email, data.otp, data.name);
+            }).catch(err => {
+                alert("❌ Error: " + err.message);
+            });
+        };
+
+        window.showOTPModal = function(email, correctOtp, name) {
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>Complete Faculty Verification</h3>
+                    <p>Email: <b>${email}</b></p>
+                    <input type="text" id="otpInput" placeholder="Enter OTP received by faculty" />
+                    <input type="password" id="newPasswordInput" placeholder="Set Password" />
+                    <button onclick="verifyAndCreateFaculty('${email}', '${correctOtp}', '${name}')">Verify & Create</button>
+                </div>`;
+            document.body.appendChild(modal);
+        };
+
+        window.showOTPInput = function (email, otp, name) {
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>Verify Email</h3>
+                    <p>Enter the OTP sent to <b>${email}</b></p>
+                    <input type="text" id="otpInput" placeholder="Enter OTP" />
+                    <input type="password" id="newPasswordInput" placeholder="Set Password" />
+                    <button onclick="verifyAndCreateFaculty('${email}', '${otp}', '${name}')">Verify & Create</button>
+                </div>`;
+            document.body.appendChild(modal);
+        };
+
+        window.verifyAndCreateFaculty = async function(email, correctOtp, name) {
+            const enteredOtp = document.getElementById("otpInput").value.trim();
+            const password = document.getElementById("newPasswordInput").value;
+
+            if (enteredOtp !== correctOtp) {
+                alert("❌ Incorrect OTP");
+                return;
+            }
+
+            if (!password || password.length < 6) {
+                alert("⚠️ Password must be at least 6 characters");
+                return;
+            }
+
+            const tempApp = initializeApp(firebaseConfig, "TempAppForCreate");
+            const tempAuth = getAuth(tempApp);
+
+            try {
+                const userCred = await createUserWithEmailAndPassword(tempAuth, email, password);
+                const uid = userCred.user.uid;
+
+                // Fetch the full pending faculty data, including profilePhoto
+                const pendingFacultySnapshot = await get(ref(db, `pending_faculties/${btoa(email)}`));
+                const pendingFacultyData = pendingFacultySnapshot.val();
+
+                await set(ref(db, `users/${uid}`), {
+                    name: pendingFacultyData.name,
+                    email: pendingFacultyData.email,
+                    mobile: pendingFacultyData.mobile || "", // Ensure all fields are saved
+                    major: pendingFacultyData.major || "",
+                    staffId: pendingFacultyData.staffId || "",
+                    doj: pendingFacultyData.doj || "",
+                    classSection: pendingFacultyData.classSection || "",
+                    gender: pendingFacultyData.gender || "",
+                    address: pendingFacultyData.address || "",
+                    workingType: pendingFacultyData.workingType || "",
+                    role: "faculty",
+                    profilePhoto: pendingFacultyData.profilePhoto // Save the profile photo here
+                });
+
+                await remove(ref(db, `pending_faculties/${btoa(email)}`));
+
+                alert("✅ Faculty successfully added.");
+                document.querySelector(".modal").remove();
+                showFaculties();
+                showPendingFaculties();
+            } catch (error) {
+                alert("❌ Error: " + error.message);
+            } finally {
+                await deleteApp(tempApp);
+            }
+        };
+
+        window.resendOtp = function(email, name) {
+            const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+            const encodedEmail = btoa(email);
+
+            const tempRef = ref(db, `pending_faculties/${encodedEmail}`);
+            update(tempRef, {
+                otp: newOtp,
+                updatedAt: Date.now()
+            }).then(() => {
+                // !! IMPORTANT: Replace "service_bb1lh51" and "template_0kq074a" with your actual EmailJS Service ID and Template ID !!
+                emailjs.send("service_bb1lh51", "template_0kq074a", {
+                    to_email: email,
+                    from_name: "Admin Panel",
+                    to_name: name,
+                    message: `Hi ${name}, your new OTP is: ${newOtp}`
+                }).then(() => {
+                    alert(`📩 OTP resent to ${email}`);
+                    showPendingFaculties();
+                }).catch(err => {
+                    alert("❌ Failed to send OTP: " + JSON.stringify(err));
+                });
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        window.removePendingFaculty = function(email) {
+            if (!confirm(`⚠️ Remove pending faculty: ${email}?`)) return;
+            const encodedEmail = btoa(email);
+            remove(ref(db, `pending_faculties/${encodedEmail}`)).then(() => {
+                alert("✅ Pending faculty removed.");
+                showPendingFaculties();
+            }).catch(err => alert("❌ " + err.message));
+        };
+
+        // --- Profile Photo Handling (Unified & Interactive) ---
+        window.openPhotoDialog = function () {
+            const dialog = document.createElement("div");
+            dialog.className = "modal";
+            dialog.innerHTML = `
+                <div class="modal-content" style="text-align:center;">
+                    <span class="close" onclick="closePhotoDialog()">&times;</span>
+                    <h3>Upload or Capture Profile Photo</h3>
+                    
+                    <input type="file" accept="image/*" onchange="handleFileUpload(event)" /><br><br>
+                    <video id="cameraStream" width="280" height="210" autoplay playsinline style="border: 1px solid #ccc; background-color: #eee;"></video><br>
+                    <button onclick="capturePhotoFromCamera()">📸 Capture Photo</button><br><br>
+                    <button onclick="closePhotoDialog()">✅ Done</button>
+                </div>`;
+            document.body.appendChild(dialog);
+            startCamera(); // Automatically start camera when dialog opens
+        };
+
+        function startCamera() {
+            const video = document.getElementById("cameraStream");
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Your browser does not support camera access.");
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    currentVideoStream = stream;
+                    video.srcObject = stream;
+                    video.play(); // Start playing the stream
+                })
+                .catch(err => {
+                    console.error("Camera access error:", err);
+                    alert("❌ Unable to access camera. Please check permissions: " + err.message);
+                    video.style.display = 'none'; // Hide video if camera fails
+                    // Optionally hide the capture button if camera fails
+                    const captureButton = document.querySelector('.modal-content button[onclick="capturePhotoFromCamera()"]');
+                    if (captureButton) {
+                        captureButton.style.display = 'none';
+                    }
+                });
+        }
+
+        function stopCamera() {
+            if (currentVideoStream) {
+                currentVideoStream.getTracks().forEach(track => track.stop());
+                currentVideoStream = null;
+            }
+            const video = document.getElementById("cameraStream");
+            if (video) {
+                video.srcObject = null;
+            }
+        }
+
+        window.capturePhotoFromCamera = function () {
+            const video = document.getElementById("cameraStream");
+            if (!video.srcObject || video.videoWidth === 0) { // Check if video stream is active and has dimensions
+                alert("Camera not active or not granted permissions. Please ensure camera is on and try again.");
+                return;
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL("image/jpeg", 0.9); // Use JPEG for smaller size, 0.9 quality
+            
+            stopCamera(); // Stop camera after capturing
+            openPreviewModal(dataURL);
+        };
+
+        window.handleFileUpload = function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert("Please upload an image file.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                stopCamera(); // Stop camera if file is uploaded
+                openPreviewModal(reader.result);
+            };
+            reader.readAsDataURL(file);
+        };
+
+        window.openPreviewModal = function (dataUrl) {
+            // Close any previous preview modals to avoid stacking
+            document.querySelectorAll(".modal").forEach(m => {
+                if (m.querySelector('#previewImg')) m.remove();
+            });
+
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content" style="text-align:center">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>Preview & Confirm Photo</h3>
+                    <img id="previewImg" src="${dataUrl}" style="max-width:100%; max-height: 300px; border:1px solid #ccc; object-fit: contain;" /><br><br>
+                    <button onclick="confirmPhoto('${dataUrl}')">✅ Confirm Photo</button>
+                </div>`;
+            document.body.appendChild(modal);
+        };
+
+        window.confirmPhoto = function (dataURL) {
+            capturedImageBlob = dataURL; // Update the global capturedImageBlob
+            const photoPreview = document.getElementById("photoPreview");
+            const photoStatus = document.getElementById("photoStatus");
+
+            if (photoPreview) {
+                photoPreview.src = dataURL;
+                photoPreview.style.display = 'block'; // Make sure it's visible
+            }
+            if (photoStatus) {
+                photoStatus.textContent = "Photo selected!";
+                photoStatus.style.color = "#4CAF50";
+            }
+
+            alert("✅ Profile photo successfully selected.");
+            document.querySelectorAll(".modal").forEach(m => m.remove()); // Close all open modals
+        };
+
+        window.closePhotoDialog = function () {
+            stopCamera(); // Ensure camera is stopped when the dialog is closed
+            // Only remove the specific dialog if it's open, not all modals
+            const photoDialog = document.querySelector('.modal'); // Simpler selection after general modal improvements
+            if (photoDialog) {
+                photoDialog.remove();
+            }
+        };
+
+        // --- Add Faculty Function (Updated) ---
+        window.addFaculty = function () {
+            const name = document.getElementById("facultyName").value.trim();
+            const email = document.getElementById("facultyEmail").value.trim();
+            const mobile = document.getElementById("facultyMobile").value.trim();
+            const major = document.getElementById("facultyMajor").value.trim();
+            const staffId = document.getElementById("facultyStaffId").value.trim();
+            const doj = document.getElementById("facultyDOJ").value;
+            const classSection = document.getElementById("facultyClassSection").value.trim();
+            const gender = document.getElementById("facultyGender").value;
+            const address = document.getElementById("facultyAddress").value.trim();
+            const workingType = document.getElementById("facultyWorkingType").value;
+
+            if (!name || !email || !mobile || !major || !staffId || !doj || !classSection || !gender || !address || !workingType) {
+                alert("Please fill all faculty details.");
+                return;
+            }
+
+            if (!capturedImageBlob || capturedImageBlob === "https://via.placeholder.com/150?text=No+Photo") {
+                alert("⚠️ Please select a profile photo.");
+                return;
+            }
+
+            console.log("Selected Photo DataURL:", capturedImageBlob);
+
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            const encodedEmail = btoa(email); // Correctly encode for Firebase path
+
+            // Save pending faculty data to Firebase
+            const tempRef = ref(db, `pending_faculties/${encodedEmail}`);
+            set(tempRef, {
+                name,
+                email,
+                mobile,
+                major,
+                staffId,
+                doj,
+                classSection,
+                gender,
+                address,
+                workingType,
+                otp,
+                profilePhoto: capturedImageBlob, // Save the captured image data
+                createdAt: Date.now()
+            }).then(() => {
+                // !! IMPORTANT: Replace with your actual EmailJS Service ID and Template ID !!
+                emailjs.send("service_bb1lh51", "template_0kq074a", {
+                    to_email: email,
+                    from_name: "Admin Panel",
+                    to_name: name,
+                    message: `Hi ${name}, your OTP is: ${otp}`
+                }).then(() => {
+                    alert(`✅ OTP sent to ${email}. Please ask the faculty to verify.`);
+                    showPendingFaculties();
+                }).catch(err => {
+                    alert(`❌ Failed to send OTP: ${JSON.stringify(err)}`);
+                });
+
+                // Show modal for OTP and password entry
+                showOTPInput(email, otp, name);
+
+                // Clear form inputs and reset photo preview
+                document.getElementById("facultyName").value = "";
+                document.getElementById("facultyEmail").value = "";
+                document.getElementById("facultyMobile").value = "";
+                document.getElementById("facultyMajor").value = "";
+                document.getElementById("facultyStaffId").value = "";
+                document.getElementById("facultyDOJ").value = "";
+                document.getElementById("facultyClassSection").value = "";
+                document.getElementById("facultyGender").value = "";
+                document.getElementById("facultyAddress").value = "";
+                document.getElementById("facultyWorkingType").value = "";
+                
+                capturedImageBlob = null; // Reset captured image
+                document.getElementById("photoPreview").src = "https://via.placeholder.com/150?text=No+Photo";
+                document.getElementById("photoStatus").textContent = "No photo selected";
+
+            }).catch((err) => {
+                alert("❌ Failed to save data: " + err.message);
+            });
+        };
+
+        // --- Faculty List & Management (UPDATED TO CARD VIEW) ---
+        window.showPendingFaculties = function () {
+            const pendingContainer = document.getElementById("pendingFacultyList");
+            pendingContainer.innerHTML = `<div class="card-container" id="pendingFacultyCardContainer"></div>`;
+            const cardContainer = document.getElementById("pendingFacultyCardContainer");
+
+            get(ref(db, "pending_faculties")).then(snapshot => {
+                const data = snapshot.val();
+                if (!data) {
+                    cardContainer.innerHTML = `<p>No pending faculties.</p>`;
+                    return;
+                }
+
+                for (let encodedEmail in data) {
+                    const faculty = data[encodedEmail];
+                    const pendingFacultyCard = document.createElement("div");
+                    pendingFacultyCard.className = "pending-faculty-card";
+                    pendingFacultyCard.innerHTML = `
+                        <img src="${faculty.profilePhoto || 'https://via.placeholder.com/100?text=No+Photo'}" alt="Profile Photo" />
+                        <h4>${faculty.name}</h4>
+                        <p><strong>Email:</strong> ${faculty.email}</p>
+                        <p><strong>Status:</strong> Pending Verification</p>
+                        <div class="card-actions">
+                            <button class="icon-btn resend-btn" title="Resend OTP" onclick="resendOtp('${faculty.email}', '${faculty.name}')">📩</button>
+                            <button class="icon-btn verify-btn" title="Verify" onclick="startFacultyVerificationFromList('${faculty.email}')">✅</button>
+                            <button class="icon-btn delete-btn" title="Remove" onclick="removePendingFaculty('${faculty.email}')">🗑️</button>
+                        </div>
+                    `;
+                    cardContainer.appendChild(pendingFacultyCard);
+                }
+            }).catch(error => {
+                console.error("Error fetching pending faculties:", error);
+                cardContainer.innerHTML = `<p>Error loading pending faculties: ${error.message}</p>`;
+            });
+        };
+
+        window.showFaculties = function () {
+            const listContainer = document.getElementById("facultyList");
+            listContainer.innerHTML = `<div class="card-container" id="facultyCardContainer"></div>`;
+            const cardContainer = document.getElementById("facultyCardContainer");
+
+            get(ref(db, "users")).then(snapshot => {
+                const data = snapshot.val();
+                if (!data) {
+                    cardContainer.innerHTML = `<p>No faculties registered.</p>`;
+                    return;
+                }
+
+                let foundFaculty = false;
+                for (let uid in data) {
+                    if (data[uid].role === "faculty") {
+                        foundFaculty = true;
+                        const faculty = data[uid];
+                        const facultyCard = document.createElement("div");
+                        facultyCard.className = "faculty-card";
+                        facultyCard.innerHTML = `
+                            <img src="${faculty.profilePhoto || 'https://via.placeholder.com/100?text=No+Photo'}" alt="Profile Photo" />
+                            <h4>${faculty.name}</h4>
+                            <p><strong>ID:</strong> ${faculty.staffId || 'N/A'}</p>
+                            <p><strong>Email:</strong> ${faculty.email}</p>
+                            <p><strong>Major:</strong> ${faculty.major || 'N/A'}</p>
+                            <p><strong>Class:</strong> ${faculty.classSection || 'N/A'}</p>
+                            <div class="card-actions">
+                                <button class="icon-btn edit-btn" title="Edit" onclick="editFaculty('${uid}')">✏️</button>
+                                <button class="icon-btn detail-btn" title="Show Details" onclick="showFacultyDetails('${uid}')">ℹ️</button>
+                                <button class="icon-btn delete-btn" title="Remove" onclick="removeFaculty('${uid}')">🗑️</button>
+                                <button class="icon-btn reset-btn" title="Reset Password" onclick="resetPassword('${faculty.email}')">🔑</button>
+                            </div>
+                        `;
+                        cardContainer.appendChild(facultyCard);
+                    }
+                }
+                if (!foundFaculty) {
+                    cardContainer.innerHTML = `<p>No faculties registered.</p>`;
+                }
+            }).catch(error => {
+                console.error("Error fetching faculties:", error);
+                cardContainer.innerHTML = `<p>Error loading faculties: ${error.message}</p>`;
+            });
+        };
+
+        window.editFaculty = function(uid) {
+            get(ref(db, `users/${uid}`)).then(snapshot => {
+                const faculty = snapshot.val();
+                if (!faculty) {
+                    alert("Faculty not found for editing.");
+                    return;
+                }
+
+                const modal = document.createElement("div");
+                modal.className = "modal";
+                modal.innerHTML = `
+                    <div class="modal-content edit-faculty-modal-content">
+                        <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                        <h3>Edit Faculty Details</h3>
+                        <input id="editUid" type="hidden" value="${uid}">
+                        <label for="editName">Full Name:</label>
+                        <input id="editName" type="text" value="${faculty.name || ''}">
+
+                        <label for="editEmail">Email:</label>
+                        <input id="editEmail" type="email" value="${faculty.email || ''}" disabled>
+
+                        <label for="editMobile">Mobile Number:</label>
+                        <input id="editMobile" placeholder="Mobile Number" type="tel" value="${faculty.mobile || ''}">
+
+                        <label for="editMajor">Major:</label>
+                        <input id="editMajor" placeholder="Major" type="text" value="${faculty.major || ''}">
+
+                        <label for="editStaffId">Staff ID:</label>
+                        <input id="editStaffId" placeholder="Staff ID" type="text" value="${faculty.staffId || ''}">
+
+                        <label for="editDOJ">Date of Joining:</label>
+                        <input id="editDOJ" type="date" value="${faculty.doj || ''}">
+
+                        <label for="editClassSection">Class/Section Handling:</label>
+                        <input id="editClassSection" placeholder="Class/Section Handling" type="text" value="${faculty.classSection || ''}">
+
+                        <label for="editGender">Gender:</label>
+                        <select id="editGender">
+                            <option value="">Select Gender</option>
+                            <option value="Male" ${faculty.gender === 'Male' ? 'selected' : ''}>Male</option>
+                            <option value="Female" ${faculty.gender === 'Female' ? 'selected' : ''}>Female</option>
+                            <option value="Others" ${faculty.gender === 'Others' ? 'selected' : ''}>Others</option>
+                        </select>
+
+                        <label for="editAddress">Address:</label>
+                        <textarea id="editAddress" placeholder="Address" rows="3">${faculty.address || ''}</textarea>
+
+                        <label for="editWorkingType">Working Type:</label>
+                        <select id="editWorkingType">
+                            <option value="">Select Type</option>
+                            <option value="Teaching" ${faculty.workingType === 'Teaching' ? 'selected' : ''}>Teaching</option>
+                            <option value="Non-Teaching" ${faculty.workingType === 'Non-Teaching' ? 'selected' : ''}>Non-Teaching</option>
+                        </select>
+                        
+                        <div class="modal-actions">
+                            <button onclick="submitEditFaculty('${uid}')">Update Faculty</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+            }).catch(error => {
+                alert("Error fetching faculty details for edit: " + error.message);
+            });
+        };
+
+        window.submitEditFaculty = async function(uid) {
+            const name = document.getElementById("editName").value.trim();
+            const mobile = document.getElementById("editMobile").value.trim();
+            const major = document.getElementById("editMajor").value.trim();
+            const staffId = document.getElementById("editStaffId").value.trim();
+            const doj = document.getElementById("editDOJ").value;
+            const classSection = document.getElementById("editClassSection").value.trim();
+            const gender = document.getElementById("editGender").value;
+            const address = document.getElementById("editAddress").value.trim();
+            const workingType = document.getElementById("editWorkingType").value;
+
+            if (!name || !mobile || !major || !staffId || !doj || !classSection || !gender || !address || !workingType) {
+                alert("Please fill all details to update.");
+                return;
+            }
+
+            try {
+                await update(ref(db, `users/${uid}`), {
+                    name,
+                    mobile,
+                    major,
+                    staffId,
+                    doj,
+                    classSection,
+                    gender,
+                    address,
+                    workingType
+                });
+
+                alert("✅ Faculty updated successfully.");
+                showFaculties(); // Refresh the list
+                document.querySelector(".modal").remove(); // Close the modal
+            } catch (error) {
+                alert("❌ Error updating faculty: " + error.message);
+            }
+        };
+
+        window.showFacultyDetails = function(uid) {
+            get(ref(db, `users/${uid}`)).then(snapshot => {
+                const faculty = snapshot.val();
+                if (!faculty) {
+                    alert("Faculty not found.");
+                    return;
+                }
+
+                const modal = document.createElement("div");
+                modal.className = "modal";
+                modal.innerHTML = `
+                    <div class="modal-content full-details-modal-content">
+                        <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                        <h3>${faculty.name} Details</h3>
+                        <img src="${faculty.profilePhoto || 'https://via.placeholder.com/150?text=No+Photo'}" alt="Profile Photo" />
+                        <p><strong>Name:</strong> ${faculty.name}</p>
+                        <p><strong>Email:</strong> ${faculty.email}</p>
+                        <p><strong>Mobile:</strong> ${faculty.mobile || 'N/A'}</p>
+                        <p><strong>Major:</strong> ${faculty.major || 'N/A'}</p>
+                        <p><strong>Staff ID:</strong> ${faculty.staffId || 'N/A'}</p>
+                        <p><strong>DOJ:</strong> ${faculty.doj || 'N/A'}</p>
+                        <p><strong>Class/Section:</strong> ${faculty.classSection || 'N/A'}</p>
+                        <p><strong>Gender:</strong> ${faculty.gender || 'N/A'}</p>
+                        <p><strong>Address:</strong> ${faculty.address || 'N/A'}</p>
+                        <p><strong>Working Type:</strong> ${faculty.workingType || 'N/A'}</p>
+                    </div>`;
+                document.body.appendChild(modal);
+            }).catch(error => {
+                alert("Error fetching faculty details: " + error.message);
+            });
+        };
+
+        window.resetPassword = function (email) {
+            if (!confirm("⚠️ Are you sure to send reset password link to this faculty?")) return;
+            sendPasswordResetEmail(auth, email)
+                .then(() => alert("✅ Password reset link sent to " + email))
+                .catch(err => alert("❌ " + err.message));
+        };
+
+        window.removeFaculty = function (uid) {
+            if (!confirm("⚠️ Are you sure you want to remove this faculty? This action is irreversible.")) return;
+            remove(ref(db, `users/${uid}`)).then(() => {
+                alert("✅ Faculty Removed");
+                showFaculties();
+            }).catch(err => alert("❌ Failed to remove faculty: " + err.message));
+        };
+
+        // --- Van Attendance & Dashboard Functions ---
+        function getFormattedDate(offsetDays = 0) {
+            const d = new Date();
+            d.setDate(d.getDate() - offsetDays);
+            return d.toISOString().split('T')[0];
+        }
+
+        window.showVanDetails = function (vanKey) {
+            const modal = document.createElement("div");
+            modal.className = "modal";
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                    <h3>${vanKey} - Students</h3>
+                    <label>Filter by Day:
+                        <select id="dayFilter">
+                            <option value="0">Today</option>
+                            <option value="1">1 Day Ago</option>
+                            <option value="2">2 Days Ago</option>
+                            <option value="3">3 Days Ago</option>
+                        </select>
+                    </label>
+                    <table class="styled-table">
+                        <thead><tr><th>Name</th><th>Class</th><th>Timestamp</th></tr></thead>
+                        <tbody id="modal-body"></tbody>
+                    </table>
+                </div>`;
+            document.body.appendChild(modal);
+
+            const modalBody = modal.querySelector("#modal-body");
+            const dayFilter = modal.querySelector("#dayFilter");
+            const attendanceRef = ref(db, `attendance/${vanKey}`);
+
+            function updateTable(offset) {
+                const targetDate = getFormattedDate(offset);
+                get(attendanceRef).then(snapshot => {
+                    const data = snapshot.val();
+                    modalBody.innerHTML = "";
+                    if (!data) {
+                        modalBody.innerHTML = `<tr><td colspan="3">No records</td></tr>`;
+                        return;
+                    }
+                    let found = false;
+                    for (let key in data) {
+                        const entry = data[key];
+                        if (entry.timestamp && entry.timestamp.startsWith(targetDate)) {
+                            modalBody.innerHTML += `<tr><td>${entry.student_name}</td><td>${entry.class}</td><td>${entry.timestamp}</td></tr>`;
+                            found = true;
+                        }
+                    }
+                    if (!found) modalBody.innerHTML = `<tr><td colspan="3">No students found for selected day</td></tr>`;
+                });
+            }
+
+            dayFilter.onchange = () => updateTable(Number(dayFilter.value));
+            updateTable(0); // Initial load for today
+        };
+
+        function displayAllVanSummaries() {
+            const vansContainer = document.getElementById("vans");
+            vansContainer.innerHTML = "";
+            const attendanceRoot = ref(db, "attendance");
+            get(attendanceRoot).then(snapshot => {
+                const vans = snapshot.val();
+                if (!vans) {
+                    vansContainer.innerHTML = "<p>No van attendance data available.</p>";
+                    return;
+                }
+
+                const today = getFormattedDate(0);
+
+                Object.keys(vans).forEach(vanKey => {
+                    const records = vans[vanKey];
+                    const count = Object.values(records || {}).filter(r => r.timestamp && r.timestamp.startsWith(today)).length;
+
+                    const container = document.createElement("div");
+                    container.className = "van-box";
+                    container.innerHTML = `
+                        <h3>${vanKey}</h3>
+                        <p>Total Students Today: ${count}</p>
+                        <button onclick="showVanDetails('${vanKey}')">Show Students</button>`;
+                    vansContainer.appendChild(container);
+                });
+            }).catch(error => {
+                console.error("Error fetching van summaries:", error);
+                vansContainer.innerHTML = `<p>Error loading van data: ${error.message}</p>`;
+            });
+        }
+
+        // --- Navigation & Initial Load ---
+        function showSection(id) {
+            const sections = document.querySelectorAll("main > section");
+            sections.forEach(sec => sec.style.display = "none");
+            const sectionToShow = document.getElementById(id);
+            if (sectionToShow) sectionToShow.style.display = "block";
+        }
+
+        window.logout = function () {
+            signOut(auth).then(() => window.location.href = "index.html")
+                .catch(error => alert("Logout failed: " + error.message));
+        };
+
+        window.onload = () => {
+            displayAllVanSummaries();
+            showFaculties();
+            showPendingFaculties();
+            showSection("van-register"); // Default section on load
+            
+            document.getElementById("nav-add-faculty").onclick = () => showSection("add-faculty");
+            document.getElementById("nav-faculty-list").onclick = () => { showSection("faculty-list"); showFaculties(); }; // Refresh list on click
+            document.getElementById("nav-home").onclick = () => showSection("van-register");
+            document.getElementById("nav-pending-faculty").onclick = () => { showSection("pending-faculty"); showPendingFaculties(); }; // Refresh list on click
+        };
+
+    </script>
+</head>
+<body>
+    <nav>
+        <h1>🛡️ Admin Panel</h1>
+        <div class="nav-links">
+            <a href="#" id="nav-home">Home</a>
+            <div class="dropdown">
+                <a href="#">Faculty</a>
+                <div class="dropdown-content">
+                    <a href="#" id="nav-add-faculty">Add Faculty</a>
+                    <a href="#" id="nav-faculty-list">Faculty List</a>
+                    <a href="#" id="nav-pending-faculty">Pending List</a>
+                </div>
+            </div>
+            <a href="#van-register">Van Register</a>
+            <a href="#student-register">Add Student</a> 
+        </div>
+        <button onclick="logout()">🚪 Logout</button>
+    </nav>
+
+    <main>
+        <section id="add-faculty" style="display: none;">
+            <h3>➕ Add Faculty</h3>
+
+            <div class="form-grid">
+                <input id="facultyName" placeholder="Full Name" type="text" />
+                <input id="facultyEmail" placeholder="Email" type="email" />
+                <input id="facultyMobile" placeholder="Mobile Number" type="tel" />
+                <input id="facultyMajor" placeholder="Major" type="text" />
+                <input id="facultyStaffId" placeholder="Staff ID" type="text" />
+                
+                <div>
+                    <label for="facultyDOJ">Date of Joining:</label>
+                    <input id="facultyDOJ" type="date" />
+                </div>
+
+                <div>
+                    <label for="facultyGender">Gender:</label>
+                    <select id="facultyGender">
+                        <option value="">Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Others">Others</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label for="facultyWorkingType">Working Type:</label>
+                    <select id="facultyWorkingType">
+                        <option value="">Select Type</option>
+                        <option value="Teaching">Teaching</option>
+                        <option value="Non-Teaching">Non-Teaching</option>
+                    </select>
+                </div>
+
+                <input id="facultyClassSection" placeholder="Class/Section Handling (e.g., 10th A, Grade 5)" class="full-width" type="text" />
+                <textarea id="facultyAddress" placeholder="Address" rows="3" class="full-width"></textarea>
+            </div>
+
+            <div class="photo-upload-section">
+                <h4>📸 Profile Photo</h4>
+                <div class="photo-controls">
+                    <button onclick="openPhotoDialog()">Upload / Capture Photo</button>
+                </div>
+                <div class="photo-preview-container">
+                    <img id="photoPreview" src="https://via.placeholder.com/150?text=No+Photo" alt="Profile Photo Preview" />
+                    <p id="photoStatus">No photo selected</p>
+                </div>
+            </div>
+
+            <button onclick="addFaculty()" class="submit-button">Send OTP & Verify Faculty</button>
+        </section>
+
+        <section id="faculty-list" style="display: none;">
+            <h3>👥 Faculty List</h3>
+            <div id="facultyList"></div>
+        </section>
+
+        <section id="pending-faculty" style="display: none;">
+            <h3>🕓 Pending Faculty List</h3>
+            <div id="pendingFacultyList"></div>
+        </section>
+
+        <section id="van-register">
+            <h3>🚐 Van Attendance Overview</h3>
+            <div id="vans"></div>
+        </section>
+        
+        <section id="student-register" style="display: none;">
+            <h3>➕ Add Student</h3>
+            <p>Content for adding students will go here.</p>
+        </section>
+
+    </main>
+</body>
+</html>

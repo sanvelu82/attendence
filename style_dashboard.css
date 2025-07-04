@@ -1,0 +1,712 @@
+/* ===== Global Base ===== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: #f4f7fa;
+    color: #333;
+    line-height: 1.6;
+    scroll-behavior: smooth;
+}
+
+/* ===== Navigation Bar ===== */
+nav {
+    background-color: #0d1b2a;
+    color: #fff;
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+nav h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.nav-links {
+    display: flex;
+    gap: 25px;
+    align-items: center;
+}
+
+.nav-links a {
+    color: white;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 6px;
+    transition: background 0.3s ease-in-out;
+}
+
+.nav-links a:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.dropdown {
+    position: relative;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: white;
+    min-width: 180px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    z-index: 10;
+    top: 110%;
+    border-radius: 8px;
+    overflow: hidden;
+    transform: translateY(10px);
+    opacity: 0;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.dropdown:hover .dropdown-content {
+    display: block;
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.dropdown-content a {
+    color: #333;
+    padding: 12px 18px;
+    display: block;
+    text-decoration: none;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+}
+
+.dropdown-content a:hover {
+    background-color: #eef2f7;
+}
+
+nav button {
+    background-color: #ff4d4d;
+    color: white;
+    font-weight: 600;
+    padding: 0.6rem 1.4rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+nav button:hover {
+    background-color: #e63946;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* ===== Layout ===== */
+main {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+section {
+    background: #ffffff;
+    padding: 1.5rem 2rem;
+    margin-bottom: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e0e0e0;
+}
+
+h3 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 1.2rem;
+    color: #2c3e50;
+    text-align: center;
+}
+
+/* ===== Form Inputs ===== */
+input, select, textarea {
+    padding: 0.8rem;
+    margin: 0.5rem 0;
+    border: 1px solid #dcdcdc;
+    border-radius: 6px;
+    width: 100%;
+    max-width: 400px;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+/* Universal Button Styles (applied to general buttons without specific classes) */
+button {
+    padding: 0.8rem 1.5rem;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 1.05rem;
+    cursor: pointer;
+    transition: background 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    min-width: fit-content; /* Ensure buttons don't shrink too much */
+}
+
+button:hover {
+    background: #0056b3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+ul li {
+    list-style: none;
+    margin: 0.5rem 0;
+}
+
+/* --- Van Attendance Overview (Card Style) --- */
+#vans {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 25px;
+    padding: 20px 0;
+}
+
+.van-box {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+    border-top: 6px solid #007bff;
+}
+
+.van-box h3 {
+    font-size: 1.5rem;
+    color: #0d1b2a;
+    margin-bottom: 0.5rem;
+    text-align: left;
+}
+
+.van-box p {
+    font-size: 1rem;
+    color: #555;
+    margin-bottom: 1rem;
+}
+
+/* Van Box Button Specificity */
+.van-box button {
+    align-self: flex-start;
+    background-color: #28a745; /* Green color for van buttons */
+    border: none;
+    padding: 0.6rem 1.2rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border-radius: 6px;
+    color: white;
+    transition: background 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.van-box button:hover {
+    background-color: #218838;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.van-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 35px rgba(0,0,0,0.15);
+}
+
+/* ===== Modal Dialogs (General) ===== */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.65);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(3px);
+}
+
+.modal-content {
+    background: white;
+    padding: 2.5rem;
+    border-radius: 12px;
+    width: 95%;
+    max-width: 700px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    position: relative;
+    animation: fadeInScale 0.3s ease-out forwards;
+}
+
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-content h3 {
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.modal-content label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #555;
+}
+
+.close {
+    position: absolute;
+    right: 1.5rem;
+    top: 1rem;
+    font-size: 32px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #666;
+    transition: color 0.2s ease;
+}
+
+.close:hover {
+    color: #333;
+}
+
+/* ===== Styled Table (within Modals) ===== */
+.styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1.5rem;
+    font-size: 0.95rem;
+    background-color: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.styled-table th, .styled-table td {
+    padding: 14px 20px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.styled-table th {
+    background-color: #004d99;
+    color: white;
+    text-transform: uppercase;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.styled-table tr:nth-child(even) {
+    background-color: #f7f7f7;
+}
+
+.styled-table tr:hover {
+    background-color: #eef7ff;
+}
+
+/* ===== Card Specific Styles (Faculty List & Pending List) ===== */
+.card-container {
+    display: grid;
+    /* Fixed width for each card, adjusted to be smaller */
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); /* Min width reduced */
+    gap: 20px; /* Slightly reduced gap */
+    padding: 20px;
+    background-color: #eef2f7;
+    border-radius: 12px;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.05);
+    justify-content: flex-start; /* Center cards in the container */
+}
+
+.faculty-card, .pending-faculty-card {
+    background-color: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    padding: 20px; /* Slightly reduced padding */
+    box-shadow: 0 6px 15px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    position: relative;
+    overflow: hidden;
+    width: 350px; /* **Fixed width for the card box** */
+ /*     margin: 0 auto; Center individual card if its container has more space */
+}
+
+.faculty-card:hover, .pending-faculty-card:hover {
+    transform: translateY(-7px);
+    box-shadow: 0 12px 25px rgba(0,0,0,0.12);
+}
+
+.faculty-card img, .pending-faculty-card img {
+    width: 100px; /* Slightly smaller image for fixed width card */
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 15px;
+    border: 4px solid #4CAF50;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.pending-faculty-card img {
+    border: 4px solid #17a2b8;
+}
+
+.faculty-card h4, .pending-faculty-card h4 {
+    margin: 0 0 8px;
+    color: #2c3e50;
+    font-size: 1.25em; /* Adjusted font size */
+    font-weight: 700;
+}
+
+.faculty-card p, .pending-faculty-card p {
+    margin: 4px 0;
+    color: #555;
+    font-size: 0.9em; /* Adjusted font size */
+    line-height: 1.4;
+    word-break: break-word; /* Ensure long words break */
+    width: 100%; /* Ensure text fills card width */
+    padding: 0 5px; /* Little padding for text within card */
+}
+
+.faculty-card p strong, .pending-faculty-card p strong {
+    color: #333;
+}
+
+.card-actions {
+    margin-top: 15px; /* Adjusted spacing */
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.card-actions .icon-btn {
+    background-color: #f0f0f0;
+    border: 1px solid #e0e0e0;
+    padding: 9px 12px; /* Adjusted padding */
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    color: #555;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.card-actions .icon-btn:hover {
+    background-color: #e2e2e2;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+}
+
+/* Specific icon button colors */
+.card-actions .edit-btn { color: #28a745; }
+.card-actions .delete-btn { color: #dc3545; }
+.card-actions .reset-btn { color: #ffc107; }
+.card-actions .detail-btn { color: #007bff; }
+.card-actions .verify-btn { color: #17a2b8; }
+.card-actions .resend-btn { color: #6f42c1; }
+
+/* Modal for Faculty Details (Full Display) */
+.full-details-modal-content {
+    max-width: 650px;
+    padding: 35px;
+    text-align: center;
+}
+
+.full-details-modal-content img {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 25px;
+    border: 6px solid #007bff;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.full-details-modal-content h3 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-size: 1.7rem;
+}
+
+.full-details-modal-content p {
+    text-align: left;
+    margin-bottom: 10px;
+    color: #444;
+    font-size: 1.1em;
+    line-height: 1.5;
+}
+
+.full-details-modal-content p strong {
+    color: #222;
+    display: inline-block;
+    min-width: 140px;
+    font-weight: 700;
+}
+
+/* Edit Faculty Modal - specific styles */
+.edit-faculty-modal-content {
+    max-width: 600px;
+}
+
+.edit-faculty-modal-content input,
+.edit-faculty-modal-content select,
+.edit-faculty-modal-content textarea {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    box-sizing: border-box;
+}
+
+.edit-faculty-modal-content label {
+    display: block;
+    text-align: left;
+    margin-bottom: 5px;
+    color: #555;
+    font-weight: bold;
+}
+
+.edit-faculty-modal-content .modal-actions {
+    margin-top: 25px;
+    justify-content: flex-end;
+    gap: 15px;
+}
+
+/* --- Add Faculty Page Styles --- */
+#add-faculty {
+    padding: 30px;
+    background-color: #fcfcfc;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    max-width: 850px;
+    margin: 30px auto;
+}
+
+#add-faculty h3 {
+    text-align: center;
+    color: #2c3e50;
+    margin-bottom: 30px;
+    font-size: 1.8rem;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    margin-bottom: 30px;
+}
+
+.form-grid > div {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-grid input[type="text"],
+.form-grid input[type="email"],
+.form-grid input[type="tel"],
+.form-grid input[type="date"],
+.form-grid select,
+.form-grid textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #dcdcdc;
+    border-radius: 8px;
+    font-size: 1rem;
+    box-sizing: border-box;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-grid input:focus,
+.form-grid select:focus,
+.form-grid textarea:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+    outline: none;
+}
+
+.form-grid label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #444;
+    font-size: 0.95rem;
+}
+
+.form-grid .full-width {
+    grid-column: 1 / -1;
+}
+
+.photo-upload-section {
+    background-color: #f7f9fc;
+    border: 2px dashed #b0c4de;
+    padding: 25px;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 35px;
+}
+
+.photo-upload-section h4 {
+    color: #333;
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.4rem;
+}
+
+/* Photo controls buttons */
+.photo-controls button {
+    background-color: #6c757d;
+    color: white;
+    padding: 12px 25px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 18px;
+}
+
+.photo-controls button:hover {
+    background-color: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.photo-preview-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+#photoPreview {
+    width: 160px;
+    height: 160px;
+    object-fit: cover;
+    border: 3px solid #007bff;
+    border-radius: 50%;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+#photoStatus {
+    font-style: italic;
+    color: #666;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+/* Camera & Upload Modal Specific Styles */
+.modal-content video {
+    display: block;
+    margin: 20px auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    background-color: #eee;
+}
+.modal-content input[type="file"] {
+    margin-bottom: 15px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    nav {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+    }
+    .nav-links {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 15px;
+    }
+    .dropdown {
+        width: 100%;
+        text-align: center;
+    }
+    .dropdown-content {
+        position: static;
+        width: 100%;
+        box-shadow: none;
+        border-radius: 0;
+        transform: none;
+        opacity: 1;
+        transition: none;
+    }
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    main {
+        padding: 1rem;
+    }
+    section {
+        padding: 1rem;
+    }
+    .modal-content {
+        padding: 1.5rem;
+    }
+    .card-container {
+        grid-template-columns: 1fr; /* Stack cards vertically on small screens */
+        padding: 15px;
+    }
+    .faculty-card, .pending-faculty-card {
+        width: 95%; /* Adjust width to fit screen */
+        max-width: 280px; /* Keep max width controlled */
+        padding: 15px;
+    }
+    .faculty-card img, .pending-faculty-card img {
+        width: 90px;
+        height: 90px;
+    }
+    .card-actions {
+        flex-direction: row;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+    .card-actions .icon-btn {
+        padding: 8px 10px;
+        font-size: 1em;
+    }
+}
