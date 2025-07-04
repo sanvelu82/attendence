@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Checking Role...</title>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+    import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAEXiIyizWAC9u3UAKBKMDyFkjCjUinhY",
+      authDomain: "attendence-9a3fe.firebaseapp.com",
+      databaseURL: "https://attendence-9a3fe-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "attendence-9a3fe",
+      storageBucket: "attendence-9a3fe.appspot.com",
+      messagingSenderId: "95924617694",
+      appId: "1:95924617694:web:9b4db3206c39ee4d8fdd4f"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const uid = user.uid;
+
+        const userRef = ref(db, `users/${uid}`);
+        get(userRef).then(snapshot => {
+          if (snapshot.exists()) {
+            const role = snapshot.val().role;
+            if (role === "admin") {
+              window.location.href = "admin-dashboard.html";
+            } else if (role === "faculty") {
+              window.location.href = "faculty-dashboard.html";
+            } else {
+              alert("❌ Unknown role. Access denied.");
+              window.location.href = "login.html";
+            }
+          } else {
+            alert("❌ User role not found in database.");
+            window.location.href = "login.html";
+          }
+        }).catch(error => {
+          console.error(error);
+          alert("❌ Error fetching role.");
+        });
+
+      } else {
+        // Not logged in
+        window.location.href = "login.html";
+      }
+    });
+  </script>
+</head>
+<body>
+  <h3>🔍 Checking your access...</h3>
+</body>
+</html>
