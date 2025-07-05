@@ -102,6 +102,7 @@ nav button {
     cursor: pointer;
     transition: background 0.3s ease;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    min-width: fit-content; /* Ensure buttons don't shrink too much */
 }
 
 nav button:hover {
@@ -112,8 +113,12 @@ nav button:hover {
 /* ===== Layout ===== */
 main {
     padding: 2rem;
-    max-width: 1400px;
+    /* Allow main to take full available width, or a generous max-width */
+    width: 100%;
+    max-width: 1600px; /* A large enough max-width to accommodate multiple cards */
     margin: 0 auto;
+    /* Removed flex properties from main, as section is now handling the main content area for the grid */
+    /* This allows the section to fill the 100% width of main more reliably */
 }
 
 section {
@@ -123,6 +128,9 @@ section {
     border-radius: 12px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
     border: 1px solid #e0e0e0;
+    /* Ensure section takes full width within main to provide maximum space for card-container */
+    width: 100%;
+    max-width: unset; /* Ensure no external max-width is constraining it */
 }
 
 h3 {
@@ -134,7 +142,9 @@ h3 {
 }
 
 /* ===== Form Inputs ===== */
-input, select, textarea {
+input,
+select,
+textarea {
     padding: 0.8rem;
     margin: 0.5rem 0;
     border: 1px solid #dcdcdc;
@@ -233,7 +243,7 @@ ul li {
 
 .van-box:hover {
     transform: translateY(-5px);
-    box-shadow: 0 12px 35px rgba(0,0,0,0.15);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
 }
 
 /* ===== Modal Dialogs (General) ===== */
@@ -259,7 +269,7 @@ ul li {
     max-width: 700px;
     max-height: 90vh;
     overflow-y: auto;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     position: relative;
     animation: fadeInScale 0.3s ease-out forwards;
 }
@@ -316,7 +326,8 @@ ul li {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.styled-table th, .styled-table td {
+.styled-table th,
+.styled-table td {
     padding: 14px 20px;
     text-align: left;
     border-bottom: 1px solid #eee;
@@ -338,115 +349,178 @@ ul li {
     background-color: #eef7ff;
 }
 
-/* ===== Card Specific Styles (Faculty List & Pending List) ===== */
+/* ===== Card Specific Styles (Faculty, Driver, Van Lists - E-commerce Product Box Style) ===== */
 .card-container {
     display: grid;
-    /* Fixed width for each card, adjusted to be smaller */
-    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); /* Min width reduced */
-    gap: 10px; /* Slightly reduced gap */
-    padding: 20px;
-    background-color: #eef2f7;
+    /* CHANGED: Use auto-fit and fixed 350px for columns, allowing justify-content to work on leftover space */
+    grid-template-columns: repeat(auto-fit, 350px); /* Use 350px for both min and max */
+    gap: 10px; /* Spacing between cards */
+    padding: 30px;
+    background-color: #f4f7fa; /* Match body background for seamless look */
     border-radius: 12px;
-    box-shadow: inset 0 2px 10px rgba(0,0,0,0.05);
-    justify-content: flex-start; /* Center cards in the container */
+    /* IMPORTANT: Use justify-content: center to center the entire grid row */
+    justify-content: left; /* This will center the grid items as a group */
+    margin: 20px auto; /* Add margin for overall container */
+    width: 100%; /* Take full available width from parent (section) */
+    max-width: unset; /* Explicitly remove any max-width */
+    min-width: 0; /* Allow the grid to shrink properly if viewport is very small */
+    box-sizing: border-box; /* Include padding in the width calculation */
 }
 
-.faculty-card, .pending-faculty-card {
-    background-color: #fff;
-    border: 1px solid #e5e5e5;
-    border-radius: 12px;
-    padding: 20px; /* Slightly reduced padding */
-    box-shadow: 0 6px 15px rgba(0,0,0,0.08);
+.faculty-card,
+.pending-faculty-card,
+.driver-card, /* ADDED */
+.pending-driver-card, /* ADDED */
+.van-card /* ADDED */ {
+    background-color: #ffffff; /* Pure white background */
+    border: 1px solid #e0e0e0; /* Subtle light gray border */
+    border-radius: 12px; /* Consistent rounded corners */
+    padding: 20px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08); /* Soft, pronounced shadow */
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
     position: relative;
-    overflow: hidden;
-    width: 350px; /* **Fixed width for the card box** */
- /*     margin: 0 auto; Center individual card if its container has more space */
+    overflow: hidden; /* Ensures content stays within rounded corners */
+    /* KEPT: Fixed width as requested. This matches the grid column size. */
+    width: 350px;
+    flex-shrink: 0; /* Prevent cards from shrinking below 350px (important for fixed width) */
 }
 
-.faculty-card:hover, .pending-faculty-card:hover {
-    transform: translateY(-7px);
-    box-shadow: 0 12px 25px rgba(0,0,0,0.12);
+.faculty-card:hover,
+.pending-faculty-card:hover,
+.driver-card:hover, /* ADDED */
+.pending-driver-card:hover, /* ADDED */
+.van-card:hover /* ADDED */ {
+    transform: translateY(-8px); /* Lift effect on hover */
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15); /* Stronger shadow on hover */
 }
 
-.faculty-card img, .pending-faculty-card img {
-    width: 100px; /* Slightly smaller image for fixed width card */
-    height: 100px;
+/* Image Styling */
+.faculty-card img,
+.pending-faculty-card img,
+.driver-card img, /* ADDED */
+.pending-driver-card img /* ADDED */ {
+    width: 120px;
+    height: 120px;
     border-radius: 50%;
     object-fit: cover;
     margin-bottom: 15px;
-    border: 4px solid #4CAF50;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border: 4px solid #f0f0f0;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease, border-color 0.3s ease;
+}
+
+/* Different image border colors for visual distinction */
+.faculty-card img {
+    border-color: #4CAF50; /* Green border for active faculty */
 }
 
 .pending-faculty-card img {
-    border: 4px solid #17a2b8;
+    border-color: #ffc107; /* Orange/Yellow border for pending faculty */
 }
 
-.faculty-card h4, .pending-faculty-card h4 {
-    margin: 0 0 8px;
-    color: #2c3e50;
-    font-size: 1.25em; /* Adjusted font size */
-    font-weight: 700;
+.driver-card img { /* ADDED */
+    border-color: #007bff; /* Blue border for active driver */
 }
 
-.faculty-card p, .pending-faculty-card p {
-    margin: 4px 0;
-    color: #555;
-    font-size: 0.9em; /* Adjusted font size */
-    line-height: 1.4;
-    word-break: break-word; /* Ensure long words break */
-    width: 100%; /* Ensure text fills card width */
-    padding: 0 5px; /* Little padding for text within card */
+.pending-driver-card img { /* ADDED */
+    border-color: #dc3545; /* Red border for pending driver */
 }
 
-.faculty-card p strong, .pending-faculty-card p strong {
+.faculty-card:hover img,
+.pending-faculty-card:hover img,
+.driver-card:hover img, /* ADDED */
+.pending-driver-card:hover img /* ADDED */ {
+    transform: scale(1.05); /* Slight zoom on image hover */
+}
+
+/* Text Content Styling */
+.faculty-card p,
+.pending-faculty-card p,
+.driver-card p, /* ADDED */
+.pending-driver-card p, /* ADDED */
+.van-card p /* ADDED */ {
+    margin: 2px 0;
+    color: #666;
+    font-size: 0.9em;
+    line-height: 1.3;
+    word-break: break-word;
+    width: 100%;
+    padding: 0 5px;
+    display: flex; /* Ensure strong and value stay on same line */
+    justify-content: center; /* Center the label-value pair horizontally */
+    align-items: baseline;
+    flex-wrap: nowrap; /* Prevent wrapping of strong and value */
+    min-width: 0; /* Allow the flex item (p) to shrink if needed */
+}
+
+.faculty-card p strong,
+.pending-faculty-card p strong,
+.driver-card p strong, /* ADDED */
+.pending-driver-card p strong, /* ADDED */
+.van-card p strong /* ADDED */ {
     color: #333;
+    font-weight: 600;
+    display: inline;
+    margin-right: 5px;
+    white-space: nowrap; /* Prevent label from wrapping */
 }
 
+/* Card Actions (Buttons) Styling */
 .card-actions {
-    margin-top: 15px; /* Adjusted spacing */
+    margin-top: 15px;
     display: flex;
-    gap: 8px;
+    gap: 15px;
     justify-content: center;
     width: 100%;
     flex-wrap: wrap;
 }
 
 .card-actions .icon-btn {
-    background-color: #f0f0f0;
-    border: 1px solid #e0e0e0;
-    padding: 9px 12px; /* Adjusted padding */
-    border-radius: 6px;
+    background-color: transparent;
+    color: #666;
+    padding: 8px 12px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 1.1em;
+    font-size: 1.4em;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-    color: #555;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    transition: color 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+    box-shadow: none;
+    border: none;
+    min-width: unset;
 }
 
 .card-actions .icon-btn:hover {
-    background-color: #e2e2e2;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+    background-color: #f0f0f0;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
 }
 
-/* Specific icon button colors */
+/* Specific icon button colors for visual cues */
 .card-actions .edit-btn { color: #28a745; }
-.card-actions .delete-btn { color: #dc3545; }
-.card-actions .reset-btn { color: #ffc107; }
-.card-actions .detail-btn { color: #007bff; }
-.card-actions .verify-btn { color: #17a2b8; }
-.card-actions .resend-btn { color: #6f42c1; }
+.card-actions .edit-btn:hover { color: #218838; }
 
-/* Modal for Faculty Details (Full Display) */
+.card-actions .delete-btn { color: #dc3545; }
+.card-actions .delete-btn:hover { color: #c82333; }
+
+.card-actions .reset-btn { color: #ffc107; }
+.card-actions .reset-btn:hover { color: #e0a800; }
+
+.card-actions .detail-btn { color: #17a2b8; }
+.card-actions .detail-btn:hover { color: #138496; }
+
+.card-actions .verify-btn { color: #6f42c1; }
+.card-actions .verify-btn:hover { color: #563d7c; }
+
+.card-actions .resend-btn { color: #6c757d; }
+.card-actions .resend-btn:hover { color: #5a6268; }
+
+/* Modal for Faculty/Driver Details (Full Display) */
 .full-details-modal-content {
     max-width: 650px;
     padding: 35px;
@@ -460,7 +534,7 @@ ul li {
     object-fit: cover;
     margin-bottom: 25px;
     border: 6px solid #007bff;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
 }
 
 .full-details-modal-content h3 {
@@ -484,14 +558,14 @@ ul li {
     font-weight: 700;
 }
 
-/* Edit Faculty Modal - specific styles */
-.edit-faculty-modal-content {
+/* Edit Form Modal - specific styles (reused for Faculty, Driver, Van) */
+.edit-form-modal-content { /* Renamed for reusability */
     max-width: 600px;
 }
 
-.edit-faculty-modal-content input,
-.edit-faculty-modal-content select,
-.edit-faculty-modal-content textarea {
+.edit-form-modal-content input,
+.edit-form-modal-content select,
+.edit-form-modal-content textarea {
     width: 100%;
     padding: 10px;
     margin-bottom: 15px;
@@ -500,7 +574,7 @@ ul li {
     box-sizing: border-box;
 }
 
-.edit-faculty-modal-content label {
+.edit-form-modal-content label {
     display: block;
     text-align: left;
     margin-bottom: 5px;
@@ -508,14 +582,17 @@ ul li {
     font-weight: bold;
 }
 
-.edit-faculty-modal-content .modal-actions {
+.edit-form-modal-content .modal-actions {
     margin-top: 25px;
     justify-content: flex-end;
     gap: 15px;
 }
 
-/* --- Add Faculty Page Styles --- */
-#add-faculty {
+/* --- Add Section Page Styles (reused for Faculty, Driver, Van, Student) --- */
+#add-faculty,
+#add-driver, /* ADDED */
+#add-van, /* ADDED */
+#add-student /* ADDED */ {
     padding: 30px;
     background-color: #fcfcfc;
     border-radius: 12px;
@@ -524,7 +601,10 @@ ul li {
     margin: 30px auto;
 }
 
-#add-faculty h3 {
+#add-faculty h3,
+#add-driver h3, /* ADDED */
+#add-van h3, /* ADDED */
+#add-student h3 /* ADDED */ {
     text-align: center;
     color: #2c3e50;
     margin-bottom: 30px;
@@ -538,7 +618,7 @@ ul li {
     margin-bottom: 30px;
 }
 
-.form-grid > div {
+.form-grid>div {
     display: flex;
     flex-direction: column;
 }
@@ -546,6 +626,7 @@ ul li {
 .form-grid input[type="text"],
 .form-grid input[type="email"],
 .form-grid input[type="tel"],
+.form-grid input[type="number"], /* ADDED for capacity/rollNo */
 .form-grid input[type="date"],
 .form-grid select,
 .form-grid textarea {
@@ -622,16 +703,18 @@ ul li {
     margin-top: 15px;
 }
 
-#photoPreview {
+#photoPreview,
+#driverPhotoPreview /* ADDED */ {
     width: 160px;
     height: 160px;
     object-fit: cover;
     border: 3px solid #007bff;
     border-radius: 50%;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
 
-#photoStatus {
+#photoStatus,
+#driverPhotoStatus /* ADDED */ {
     font-style: italic;
     color: #666;
     font-size: 0.95rem;
@@ -643,9 +726,10 @@ ul li {
     display: block;
     margin: 20px auto;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     background-color: #eee;
 }
+
 .modal-content input[type="file"] {
     margin-bottom: 15px;
 }
@@ -657,15 +741,18 @@ ul li {
         gap: 1rem;
         padding: 1rem;
     }
+
     .nav-links {
         flex-wrap: wrap;
         justify-content: center;
         gap: 15px;
     }
+
     .dropdown {
         width: 100%;
         text-align: center;
     }
+
     .dropdown-content {
         position: static;
         width: 100%;
@@ -675,38 +762,126 @@ ul li {
         opacity: 1;
         transition: none;
     }
+
     .form-grid {
         grid-template-columns: 1fr;
     }
+
     main {
         padding: 1rem;
     }
+
     section {
         padding: 1rem;
     }
+
     .modal-content {
         padding: 1.5rem;
     }
+
     .card-container {
-        grid-template-columns: 1fr; /* Stack cards vertically on small screens */
+        /* CHANGED: For small screens, allow auto-fit to adjust, but keep min-width for columns */
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* Allow 1fr to stretch */
         padding: 15px;
     }
-    .faculty-card, .pending-faculty-card {
-        width: 95%; /* Adjust width to fit screen */
-        max-width: 280px; /* Keep max width controlled */
-        padding: 15px;
+
+    .faculty-card,
+    .pending-faculty-card,
+    .driver-card, /* ADDED */
+    .pending-driver-card, /* ADDED */
+    .van-card /* ADDED */ {
+        /* CHANGED: On small screens, allow card to take full width of its grid cell. */
+        width: 100%; /* Take full available width from its (potentially stretched) grid cell */
+        max-width: unset; /* Remove max-width here to allow 100% of cell */
+        padding: 15px; /* Adjust padding for smaller screens */
     }
-    .faculty-card img, .pending-faculty-card img {
-        width: 90px;
+
+    .faculty-card img,
+    .pending-faculty-card img,
+    .driver-card img, /* ADDED */
+    .pending-driver-card img /* ADDED */ {
+        width: 90px; /* Smaller image on small screens */
         height: 90px;
+        margin-bottom: 10px; /* Further reduce margin */
     }
+
+    .faculty-card h4,
+    .pending-faculty-card h4,
+    .driver-card h4, /* ADDED */
+    .pending-driver-card h4, /* ADDED */
+    .van-card h4 /* ADDED */ {
+        font-size: 1.3em; /* Smaller font on small screens */
+        margin-bottom: 5px;
+    }
+
+    .faculty-card p,
+    .pending-faculty-card p,
+    .driver-card p, /* ADDED */
+    .pending-driver-card p, /* ADDED */
+    .van-card p /* ADDED */ {
+        font-size: 0.85em; /* Smaller detail font on small screens */
+        margin: 1px 0; /* Even less margin */
+    }
+
     .card-actions {
-        flex-direction: row;
-        gap: 5px;
-        flex-wrap: wrap;
+        margin-top: 10px; /* Less space above buttons on small screens */
+        gap: 8px;
     }
+
     .card-actions .icon-btn {
-        padding: 8px 10px;
-        font-size: 1em;
+        padding: 6px 9px; /* Smaller padding for icons */
+        font-size: 1em; /* Smaller icon size */
     }
+}
+/* style_dashboard.css */
+/* In style_dashboard.css */
+.search-input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    box-sizing: border-box;
+}
+.styled-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 25px 0;
+    font-size: 0.9em;
+    min-width: 400px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+}
+
+.styled-table thead tr {
+    background-color: #0d1b2a;
+    color: #ffffff;
+    text-align: left;
+}
+
+.styled-table th,
+.styled-table td {
+    padding: 12px 15px;
+    border: 1px solid #dddddd;
+}
+
+.styled-table tbody tr:nth-of-type(even) {
+    background-color: #f3f3f3;
+}
+
+.styled-table tbody tr:last-of-type {
+    border-bottom: 2px solid #0d1b2a;
+}
+
+.styled-table tbody tr.active-row {
+    font-weight: bold;
+    color: #0d1b2a;
+}
+
+.table-profile-photo {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    margin: auto;
 }
