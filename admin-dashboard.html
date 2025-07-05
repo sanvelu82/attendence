@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         // !! IMPORTANT: Replace "OgCmeeGJpJlpHpeXq" with your actual EmailJS Public Key !!
-        emailjs.init("OgCmeeGJpJlpHpeXq"); 
+        emailjs.init("ehirNR0Vojkko0t4T"); 
     </script>
 
     <meta charset="UTF-8">
@@ -15,10 +16,11 @@
         // GLOBAL variable for captured image, declared once for consistency
         let capturedImageBlob = null; 
         let currentVideoStream = null; // To manage camera stream across functions
+        let currentPhotoTargetType = null; // NEW: To store 'faculty' or 'driver'
 
         import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
         import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signOut, signInWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updatePassword } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-        import { getDatabase, ref, get, set, remove, update } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
+        import { getDatabase, ref, get, set, remove, push, update } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
 
         const firebaseConfig = {
             // !! IMPORTANT: Replace with your actual Firebase config details !!
@@ -40,8 +42,8 @@
                 const roleRef = ref(db, `users/${user.uid}/role`);
                 get(roleRef).then(snapshot => {
                     const role = snapshot.val();
-                    if (!role || role !== "admin") {
-                        alert("Access Denied: Admins Only");
+                    if (!role || (role !== "admin" && role !== "driver")) { // Allow drivers to log in
+                        alert("Access Denied: Admins or Drivers Only");
                         signOut(auth).then(() => window.location.href = "index.html");
                     }
                 }).catch(error => {
@@ -53,84 +55,23 @@
             }
         });
 
-        // --- Faculty Verification & OTP Handling ---
-        window.startFacultyVerification = function () {
-            const email = document.getElementById("verifyEmail").value.trim();
-            if (!email) {
-                alert("Please enter the faculty email.");
-                return;
-            }
-
-            const encodedEmail = btoa(email);
-            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
-                if (!snapshot.exists()) {
-                    alert("❌ No pending faculty found with this email.");
-                    return;
-                }
-
-                const data = snapshot.val();
-                showOTPModal(email, data.otp, data.name);
-            }).catch(err => alert("❌ " + err.message));
-        };
-
-        window.startFacultyVerificationDirect = function(email) {
-            const encodedEmail = btoa(email);
-            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
-                if (!snapshot.exists()) {
-                    alert("❌ No pending faculty found with this email.");
-                    return;
-                }
-                const data = snapshot.val();
-                showOTPModal(email, data.otp, data.name);
-            }).catch(err => alert("❌ " + err.message));
-        };
-
-        window.startFacultyVerificationFromList = function (email) {
-            const encodedEmail = btoa(email);
-            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
-                if (!snapshot.exists()) {
-                    alert("❌ No pending faculty found with this email.");
-                    return;
-                }
-
-                const data = snapshot.val();
-                showOTPModal(email, data.otp, data.name);
-            }).catch(err => {
-                alert("❌ Error: " + err.message);
-            });
-        };
-
-        window.showOTPModal = function(email, correctOtp, name) {
+        // --- Shared OTP Handling Functions (Refactored for reusability) ---
+        window.showOTPModal = function(email, correctOtp, name, type) { // type can be 'faculty' or 'driver'
             const modal = document.createElement("div");
             modal.className = "modal";
             modal.innerHTML = `
                 <div class="modal-content">
                     <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-                    <h3>Complete Faculty Verification</h3>
+                    <h3>Complete ${type === 'faculty' ? 'Faculty' : 'Driver'} Verification</h3>
                     <p>Email: <b>${email}</b></p>
-                    <input type="text" id="otpInput" placeholder="Enter OTP received by faculty" />
+                    <input type="text" id="otpInput" placeholder="Enter OTP received" />
                     <input type="password" id="newPasswordInput" placeholder="Set Password" />
-                    <button onclick="verifyAndCreateFaculty('${email}', '${correctOtp}', '${name}')">Verify & Create</button>
+                    <button onclick="verifyAndCreateUser('${email}', '${correctOtp}', '${name}', '${type}')">Verify & Create</button>
                 </div>`;
             document.body.appendChild(modal);
         };
 
-        window.showOTPInput = function (email, otp, name) {
-            const modal = document.createElement("div");
-            modal.className = "modal";
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-                    <h3>Verify Email</h3>
-                    <p>Enter the OTP sent to <b>${email}</b></p>
-                    <input type="text" id="otpInput" placeholder="Enter OTP" />
-                    <input type="password" id="newPasswordInput" placeholder="Set Password" />
-                    <button onclick="verifyAndCreateFaculty('${email}', '${otp}', '${name}')">Verify & Create</button>
-                </div>`;
-            document.body.appendChild(modal);
-        };
-
-        window.verifyAndCreateFaculty = async function(email, correctOtp, name) {
+        window.verifyAndCreateUser = async function(email, correctOtp, name, type) {
             const enteredOtp = document.getElementById("otpInput").value.trim();
             const password = document.getElementById("newPasswordInput").value;
 
@@ -144,38 +85,46 @@
                 return;
             }
 
-            const tempApp = initializeApp(firebaseConfig, "TempAppForCreate");
+            const tempApp = initializeApp(firebaseConfig, `TempAppForCreate${type}`);
             const tempAuth = getAuth(tempApp);
 
             try {
                 const userCred = await createUserWithEmailAndPassword(tempAuth, email, password);
                 const uid = userCred.user.uid;
 
-                // Fetch the full pending faculty data, including profilePhoto
-                const pendingFacultySnapshot = await get(ref(db, `pending_faculties/${btoa(email)}`));
-                const pendingFacultyData = pendingFacultySnapshot.val();
+                const encodedEmail = btoa(email);
+                const pendingPath = `${type === 'faculty' ? 'pending_faculties' : 'pending_drivers'}/${encodedEmail}`;
+                const userPath = `users/${uid}`;
 
-                await set(ref(db, `users/${uid}`), {
-                    name: pendingFacultyData.name,
-                    email: pendingFacultyData.email,
-                    mobile: pendingFacultyData.mobile || "", // Ensure all fields are saved
-                    major: pendingFacultyData.major || "",
-                    staffId: pendingFacultyData.staffId || "",
-                    doj: pendingFacultyData.doj || "",
-                    classSection: pendingFacultyData.classSection || "",
-                    gender: pendingFacultyData.gender || "",
-                    address: pendingFacultyData.address || "",
-                    workingType: pendingFacultyData.workingType || "",
-                    role: "faculty",
-                    profilePhoto: pendingFacultyData.profilePhoto // Save the profile photo here
-                });
+                const pendingSnapshot = await get(ref(db, pendingPath));
+                const pendingData = pendingSnapshot.val();
 
-                await remove(ref(db, `pending_faculties/${btoa(email)}`));
+                if (!pendingData) {
+                    alert(`Error: No pending ${type} data found.`);
+                    return;
+                }
+                
+                const userData = {
+                    ...pendingData, // Copy all pending data
+                    role: type, // Set the appropriate role
+                };
+                delete userData.otp; // Don't store OTP in user profile
+                delete userData.createdAt; // Don't store createdAt from pending
 
-                alert("✅ Faculty successfully added.");
+                await set(ref(db, userPath), userData);
+                await remove(ref(db, pendingPath));
+
+                alert(`✅ ${type === 'faculty' ? 'Faculty' : 'Driver'} successfully added.`);
                 document.querySelector(".modal").remove();
-                showFaculties();
-                showPendingFaculties();
+                if (type === 'faculty') {
+                    showFaculties();
+                    showPendingFaculties();
+                } else if (type === 'driver') {
+                    showDrivers();
+                    showPendingDrivers();
+                } else if (type === 'student') {
+                    showStudents();
+                }
             } catch (error) {
                 alert("❌ Error: " + error.message);
             } finally {
@@ -183,12 +132,12 @@
             }
         };
 
-        window.resendOtp = function(email, name) {
+        window.resendOtpGeneric = function(email, name, type) {
             const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
             const encodedEmail = btoa(email);
+            const pendingPath = `${type === 'faculty' ? 'pending_faculties' : 'pending_drivers'}/${encodedEmail}`;
 
-            const tempRef = ref(db, `pending_faculties/${encodedEmail}`);
-            update(tempRef, {
+            update(ref(db, pendingPath), {
                 otp: newOtp,
                 updatedAt: Date.now()
             }).then(() => {
@@ -200,24 +149,28 @@
                     message: `Hi ${name}, your new OTP is: ${newOtp}`
                 }).then(() => {
                     alert(`📩 OTP resent to ${email}`);
-                    showPendingFaculties();
+                    if (type === 'faculty') showPendingFaculties();
+                    else showPendingDrivers();
                 }).catch(err => {
                     alert("❌ Failed to send OTP: " + JSON.stringify(err));
                 });
             }).catch(err => alert("❌ " + err.message));
         };
 
-        window.removePendingFaculty = function(email) {
-            if (!confirm(`⚠️ Remove pending faculty: ${email}?`)) return;
+        window.removePendingGeneric = function(email, type) {
+            if (!confirm(`⚠️ Remove pending ${type}: ${email}?`)) return;
             const encodedEmail = btoa(email);
-            remove(ref(db, `pending_faculties/${encodedEmail}`)).then(() => {
-                alert("✅ Pending faculty removed.");
-                showPendingFaculties();
+            const pendingPath = `${type === 'faculty' ? 'pending_faculties' : 'pending_drivers'}/${encodedEmail}`;
+            remove(ref(db, pendingPath)).then(() => {
+                alert(`✅ Pending ${type} removed.`);
+                if (type === 'faculty') showPendingFaculties();
+                else showPendingDrivers();
             }).catch(err => alert("❌ " + err.message));
         };
 
         // --- Profile Photo Handling (Unified & Interactive) ---
-        window.openPhotoDialog = function () {
+        window.openPhotoDialog = function (type) { // MODIFIED: Added 'type' parameter
+            currentPhotoTargetType = type; // Store the type
             const dialog = document.createElement("div");
             dialog.className = "modal";
             dialog.innerHTML = `
@@ -225,7 +178,7 @@
                     <span class="close" onclick="closePhotoDialog()">&times;</span>
                     <h3>Upload or Capture Profile Photo</h3>
                     
-                    <input type="file" accept="image/*" onchange="handleFileUpload(event)" /><br><br>
+                    <input type="file" accept="image/*" onchange="handleFileUpload(event, currentPhotoTargetType)" /><br><br>
                     <video id="cameraStream" width="280" height="210" autoplay playsinline style="border: 1px solid #ccc; background-color: #eee;"></video><br>
                     <button onclick="capturePhotoFromCamera()">📸 Capture Photo</button><br><br>
                     <button onclick="closePhotoDialog()">✅ Done</button>
@@ -287,7 +240,7 @@
             openPreviewModal(dataURL);
         };
 
-        window.handleFileUpload = function (event) {
+        window.handleFileUpload = function (event,type) {
             const file = event.target.files[0];
             if (!file) return;
 
@@ -322,19 +275,36 @@
             document.body.appendChild(modal);
         };
 
-        window.confirmPhoto = function (dataURL) {
+        window.confirmPhoto = function (dataURL) { // MODIFIED to handle different photo previews
             capturedImageBlob = dataURL; // Update the global capturedImageBlob
-            const photoPreview = document.getElementById("photoPreview");
-            const photoStatus = document.getElementById("photoStatus");
 
-            if (photoPreview) {
-                photoPreview.src = dataURL;
-                photoPreview.style.display = 'block'; // Make sure it's visible
+            let photoPreviewElement;
+            let photoStatusElement;
+
+            if (currentPhotoTargetType === 'faculty') { //
+                photoPreviewElement = document.getElementById("photoPreview"); //
+                photoStatusElement = document.getElementById("photoStatus"); //
+            } else if (currentPhotoTargetType === 'driver') { //
+                photoPreviewElement = document.getElementById("driverPhotoPreview"); // Use driver-specific ID
+                photoStatusElement = document.getElementById("driverPhotoStatus"); // Use driver-specific ID
+            } else if (currentPhotoTargetType === 'student') { // 
+            photoPreviewElement = document.getElementById("studentPhotoPreview"); // Use student-specific ID
+            photoStatusElement = null; // No status text for student, as per HTML (you can add one if needed)
+        }else { //
+                // Fallback or error if type is not set (shouldn't happen if buttons are linked)
+                console.warn("No specific photo target type set for confirmation."); //
+                photoPreviewElement = document.getElementById("photoPreview"); // Default to faculty
+                photoStatusElement = document.getElementById("photoStatus"); // Default to faculty
             }
-            if (photoStatus) {
-                photoStatus.textContent = "Photo selected!";
-                photoStatus.style.color = "#4CAF50";
-            }
+
+            if (photoPreviewElement) { //
+                photoPreviewElement.src = dataURL; //
+                photoPreviewElement.style.display = 'block'; // Make sure it's visible
+            } //
+            if (photoStatusElement) { //
+                photoStatusElement.textContent = "Photo selected!"; //
+                photoStatusElement.style.color = "#4CAF50"; //
+            } //
 
             alert("✅ Profile photo successfully selected.");
             document.querySelectorAll(".modal").forEach(m => m.remove()); // Close all open modals
@@ -343,13 +313,13 @@
         window.closePhotoDialog = function () {
             stopCamera(); // Ensure camera is stopped when the dialog is closed
             // Only remove the specific dialog if it's open, not all modals
-            const photoDialog = document.querySelector('.modal .modal-content h3:contains("Upload or Capture Profile Photo")').closest('.modal');
+            const photoDialog = document.querySelector('.modal'); // Simpler selection after general modal improvements
             if (photoDialog) {
                 photoDialog.remove();
             }
         };
 
-        // --- Add Faculty Function (Updated) ---
+        // --- Add Faculty Function ---
         window.addFaculty = function () {
             const name = document.getElementById("facultyName").value.trim();
             const email = document.getElementById("facultyEmail").value.trim();
@@ -394,7 +364,7 @@
                 profilePhoto: capturedImageBlob, // Save the captured image data
                 createdAt: Date.now()
             }).then(() => {
-                // !! IMPORTANT: Replace with your actual EmailJS Service ID and Template ID !!
+                // !! IMPORTANT: Replace "service_bb1lh51" and "template_0kq074a" with your actual EmailJS Service ID and Template ID !!
                 emailjs.send("service_bb1lh51", "template_0kq074a", {
                     to_email: email,
                     from_name: "Admin Panel",
@@ -408,7 +378,7 @@
                 });
 
                 // Show modal for OTP and password entry
-                showOTPInput(email, otp, name);
+                showOTPModal(email, otp, name, 'faculty');
 
                 // Clear form inputs and reset photo preview
                 document.getElementById("facultyName").value = "";
@@ -434,690 +404,6 @@
         // --- Faculty List & Management ---
         window.showPendingFaculties = function () {
             const pendingContainer = document.getElementById("pendingFacultyList");
-            pendingContainer.innerHTML = `
-                <table class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pendingFacultyTableBody"></tbody>
-                </table>
-            `;
-
-            const tableBody = document.getElementById("pendingFacultyTableBody");
-
-            get(ref(db, "pending_faculties")).then(snapshot => {
-                const data = snapshot.val();
-                if (!data) {
-                    tableBody.innerHTML = `<tr><td colspan="5">No pending faculties</td></tr>`;
-                    return;
-                }
-
-                for (let encodedEmail in data) {
-                    const faculty = data[encodedEmail];
-                    const row = document.createElement("tr");
-                    row.innerHTML = `
-                        <td>${faculty.name}</td>
-                        <td>${faculty.email}</td>
-                        <td>Pending Verification</td>
-                        <td>
-                            <button class="icon-btn" onclick="resendOtp('${faculty.email}', '${faculty.name}')">📩 Resend OTP</button>
-                            <button class="icon-btn" onclick="startFacultyVerificationFromList('${faculty.email}')">✅ Verify</button>
-                            <button class="icon-btn delete-btn" onclick="removePendingFaculty('${faculty.email}')">🗑️ Remove</button>
-                        </td>
-                    `;
-                    tableBody.appendChild(row);
-                }
-            });
-        };
-
-        window.showFaculties = function () {
-            const listContainer = document.getElementById("facultyList");
-            listContainer.innerHTML = `
-                <table class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="facultyTableBody"></tbody>
-                </table>
-            `;
-
-            const tableBody = document.getElementById("facultyTableBody");
-            get(ref(db, "users")).then(snapshot => {
-                const data = snapshot.val();
-                if (!data) { // Handle case where there are no users
-                    tableBody.innerHTML = `<tr><td colspan="3">No faculties registered.</td></tr>`;
-                    return;
-                }
-
-                let foundFaculty = false;
-                for (let uid in data) {
-                    if (data[uid].role === "faculty") {
-                        foundFaculty = true;
-                        const row = document.createElement("tr");
-                        row.innerHTML = `
-                            <td>${data[uid].name}</td>
-                            <td>${data[uid].email}</td>
-                            <td>
-                                <button class="icon-btn edit-btn" title="Edit" onclick="editFaculty('${uid}', '${data[uid].name}', '${data[uid].email}')"><span>✏️</span></button>
-                                <button class="icon-btn delete-btn" title="Remove" onclick="removeFaculty('${uid}')"><span>🗑️</span></button>
-                                <button class="icon-btn reset-btn" title="Reset Password" onclick="resetPassword('${data[uid].email}')"><span>🔑</span></button>
-                            </td>
-                        `;
-                        tableBody.appendChild(row);
-                    }
-                }
-                if (!foundFaculty) {
-                    tableBody.innerHTML = `<tr><td colspan="3">No faculties registered.</td></tr>`;
-                }
-            });
-        };
-
-        window.editFaculty = function(uid, name, email) {
-            const modal = document.createElement("div");
-            modal.className = "modal";
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-                    <h3>Edit Faculty</h3>
-                    <label>Name</label>
-                    <input id="editName" type="text" value="${name}">
-                    <label>Email</label>
-                    <input id="editEmail" type="email" value="${email}" disabled>
-                    <label>Current Password</label>
-                    <input id="editCurrentPass" type="password" placeholder="Current Password">
-                    <label>New Password</label>
-                    <input id="editNewPass" type="password" placeholder="New Password">
-                    <div class="modal-actions">
-                        <button onclick="submitEditFaculty('${uid}', '${email}')">Update</button>
-                    </div>
-                </div>`;
-            document.body.appendChild(modal);
-        };
-
-        window.submitEditFaculty = async function(uid, oldEmail) {
-            const name = document.getElementById("editName").value.trim();
-            const newPassword = document.getElementById("editNewPass").value;
-            const currentPassword = document.getElementById("editCurrentPass").value;
-
-            if (!name) {
-                alert("Please enter a name.");
-                return;
-            }
-
-            const tempApp = initializeApp(firebaseConfig, "TempEditApp");
-            const tempAuth = getAuth(tempApp);
-
-            try {
-                if (currentPassword && newPassword) {
-                    const userCred = await signInWithEmailAndPassword(tempAuth, oldEmail, currentPassword);
-                    const user = userCred.user;
-                    await updatePassword(user, newPassword);
-                } else if (currentPassword || newPassword) {
-                    alert("To change password, both current and new passwords must be provided.");
-                    return;
-                }
-
-                await update(ref(db, `users/${uid}`), { name });
-
-                alert("✅ Faculty updated successfully.");
-                showFaculties();
-                document.querySelector(".modal").remove();
-            } catch (error) {
-                alert("❌ " + error.message);
-            } finally {
-                await deleteApp(tempApp);
-            }
-        };
-
-        window.resetPassword = function (email) {
-            if (!confirm("⚠️ Are you sure to send reset password link to this faculty?")) return;
-            sendPasswordResetEmail(auth, email)
-                .then(() => alert("✅ Password reset link sent to " + email))
-                .catch(err => alert("❌ " + err.message));
-        };
-
-        window.removeFaculty = function (uid) {
-            if (!confirm("⚠️ Are you sure you want to remove this faculty? This action is irreversible.")) return;
-            remove(ref(db, `users/${uid}`)).then(() => {
-                alert("✅ Faculty Removed");
-                showFaculties();
-            }).catch(err => alert("❌ Failed to remove faculty: " + err.message));
-        };
-
-        // --- Van Attendance & Dashboard Functions ---
-        function getFormattedDate(offsetDays = 0) {
-            const d = new Date();
-            d.setDate(d.getDate() - offsetDays);
-            return d.toISOString().split('T')[0];
-        }
-
-        window.showVanDetails = function (vanKey) {
-            const modal = document.createElement("div");
-            modal.className = "modal";
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-                    <h3>${vanKey} - Students</h3>
-                    <label>Filter by Day:
-                        <select id="dayFilter">
-                            <option value="0">Today</option>
-                            <option value="1">1 Day Ago</option>
-                            <option value="2">2 Days Ago</option>
-                            <option value="3">3 Days Ago</option>
-                        </select>
-                    </label>
-                    <table class="styled-table">
-                        <thead><tr><th>Name</th><th>Class</th><th>Timestamp</th></tr></thead>
-                        <tbody id="modal-body"></tbody>
-                    </table>
-                </div>`;
-            document.body.appendChild(modal);
-
-            const modalBody = modal.querySelector("#modal-body");
-            const dayFilter = modal.querySelector("#dayFilter");
-            const attendanceRef = ref(db, `attendance/${vanKey}`);
-
-            function updateTable(offset) {
-                const targetDate = getFormattedDate(offset);
-                get(attendanceRef).then(snapshot => {
-                    const data = snapshot.val();
-                    modalBody.innerHTML = "";
-                    if (!data) {
-                        modalBody.innerHTML = `<tr><td colspan="3">No records</td></tr>`;
-                        return;
-                    }
-                    let found = false;
-                    for (let key in data) {
-                        const entry = data[key];
-                        if (entry.timestamp && entry.timestamp.startsWith(targetDate)) {
-                            modalBody.innerHTML += `<tr><td>${entry.student_name}</td><td>${entry.class}</td><td>${entry.timestamp}</td></tr>`;
-                            found = true;
-                        }
-                    }
-                    if (!found) modalBody.innerHTML = `<tr><td colspan="3">No students found for selected day</td></tr>`;
-                });
-            }
-
-            dayFilter.onchange = () => updateTable(Number(dayFilter.value));
-            updateTable(0); // Initial load for today
-        };
-
-        function displayAllVanSummaries() {
-            const vansContainer = document.getElementById("vans");
-            vansContainer.innerHTML = "";
-            const attendanceRoot = ref(db, "attendance");
-            get(attendanceRoot).then(snapshot => {
-                const vans = snapshot.val();
-                if (!vans) {
-                    vansContainer.innerHTML = "<p>No van attendance data available.</p>";
-                    return;
-                }
-
-                const today = getFormattedDate(0);
-
-                Object.keys(vans).forEach(vanKey => {
-                    const records = vans[vanKey];
-                    const count = Object.values(records || {}).filter(r => r.timestamp && r.timestamp.startsWith(today)).length;
-
-                    const container = document.createElement("div");
-                    container.className = "van-box";
-                    container.innerHTML = `
-                        <h3>${vanKey}</h3>
-                        <p>Total Students Today: ${count}</p>
-                        <button onclick="showVanDetails('${vanKey}')">Show Students</button>`;
-                    vansContainer.appendChild(container);
-                });
-            }).catch(error => {
-                console.error("Error fetching van summaries:", error);
-                vansContainer.innerHTML = `<p>Error loading van data: ${error.message}</p>`;
-            });
-        }
-
-       <!DOCTYPE html>
-<html lang="en">
-<head>
-    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-    <script>
-        // !! IMPORTANT: Replace "OgCmeeGJpJlpHpeXq" with your actual EmailJS Public Key !!
-        emailjs.init("OgCmeeGJpJlpHpeXq");
-    </script>
-
-    <meta charset="UTF-8">
-    <title>Admin Dashboard - School Attendance</title>
-    <link rel="stylesheet" href="style_dashboard.css">
-    
-    <script type="module">
-        // GLOBAL variable for captured image, declared once for consistency
-        let capturedImageBlob = null;
-        let currentVideoStream = null; // To manage camera stream across functions
-
-        import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signOut, signInWithEmailAndPassword, sendPasswordResetEmail, updateEmail, updatePassword } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-        import { getDatabase, ref, get, set, remove, update } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-database.js";
-
-        const firebaseConfig = {
-            // !! IMPORTANT: Replace with your actual Firebase config details !!
-            apiKey: "AIzaSyAAEXiIyizWAC9u3UAKBKMDyFkjCjUinhY",
-            authDomain: "attendence-9a3fe.firebaseapp.com",
-            databaseURL: "https://attendence-9a3fe-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "attendence-9a3fe",
-            storageBucket: "attendence-9a3fe.appspot.com",
-            messagingSenderId: "95924617694",
-            appId: "1:95924617694:web:9b4db3206c39ee4d8fdd4f"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth();
-        const db = getDatabase();
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                const roleRef = ref(db, `users/${user.uid}/role`);
-                get(roleRef).then(snapshot => {
-                    const role = snapshot.val();
-                    if (!role || role !== "admin") {
-                        alert("Access Denied: Admins Only");
-                        signOut(auth).then(() => window.location.href = "index.html");
-                    }
-                }).catch(error => {
-                    console.error("Error checking role:", error);
-                    signOut(auth).then(() => window.location.href = "index.html");
-                });
-            } else {
-                window.location.href = "index.html";
-            }
-        });
-
-        // --- Faculty Verification & OTP Handling ---
-        window.startFacultyVerification = function () {
-            const email = document.getElementById("verifyEmail").value.trim();
-            if (!email) {
-                alert("Please enter the faculty email.");
-                return;
-            }
-
-            const encodedEmail = btoa(email);
-            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
-                if (!snapshot.exists()) {
-                    alert("❌ No pending faculty found with this email.");
-                    return;
-                }
-
-                const data = snapshot.val();
-                showOTPModal(email, data.otp, data.name);
-            }).catch(err => alert("❌ " + err.message));
-        };
-
-        window.startFacultyVerificationDirect = function(email) {
-            const encodedEmail = btoa(email);
-            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
-                if (!snapshot.exists()) {
-                    alert("❌ No pending faculty found with this email.");
-                    return;
-                }
-                const data = snapshot.val();
-                showOTPModal(email, data.otp, data.name);
-            }).catch(err => alert("❌ " + err.message));
-        };
-
-        window.startFacultyVerificationFromList = function (email) {
-            const encodedEmail = btoa(email);
-            get(ref(db, `pending_faculties/${encodedEmail}`)).then(snapshot => {
-                if (!snapshot.exists()) {
-                    alert("❌ No pending faculty found with this email.");
-                    return;
-                }
-
-                const data = snapshot.val();
-                showOTPModal(email, data.otp, data.name);
-            }).catch(err => {
-                alert("❌ Error: " + err.message);
-            });
-        };
-
-        window.showOTPModal = function(email, correctOtp, name) {
-            const modal = document.createElement("div");
-            modal.className = "modal";
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-                    <h3>Complete Faculty Verification</h3>
-                    <p>Email: <b>${email}</b></p>
-                    <input type="text" id="otpInput" placeholder="Enter OTP received by faculty" />
-                    <input type="password" id="newPasswordInput" placeholder="Set Password" />
-                    <button onclick="verifyAndCreateFaculty('${email}', '${correctOtp}', '${name}')">Verify & Create</button>
-                </div>`;
-            document.body.appendChild(modal);
-        };
-
-        window.showOTPInput = function (email, otp, name) {
-            const modal = document.createElement("div");
-            modal.className = "modal";
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-                    <h3>Verify Email</h3>
-                    <p>Enter the OTP sent to <b>${email}</b></p>
-                    <input type="text" id="otpInput" placeholder="Enter OTP" />
-                    <input type="password" id="newPasswordInput" placeholder="Set Password" />
-                    <button onclick="verifyAndCreateFaculty('${email}', '${otp}', '${name}')">Verify & Create</button>
-                </div>`;
-            document.body.appendChild(modal);
-        };
-
-        window.verifyAndCreateFaculty = async function(email, correctOtp, name) {
-            const enteredOtp = document.getElementById("otpInput").value.trim();
-            const password = document.getElementById("newPasswordInput").value;
-
-            if (enteredOtp !== correctOtp) {
-                alert("❌ Incorrect OTP");
-                return;
-            }
-
-            if (!password || password.length < 6) {
-                alert("⚠️ Password must be at least 6 characters");
-                return;
-            }
-
-            const tempApp = initializeApp(firebaseConfig, "TempAppForCreate");
-            const tempAuth = getAuth(tempApp);
-
-            try {
-                const userCred = await createUserWithEmailAndPassword(tempAuth, email, password);
-                const uid = userCred.user.uid;
-
-                // Fetch the full pending faculty data, including profilePhoto
-                const pendingFacultySnapshot = await get(ref(db, `pending_faculties/${btoa(email)}`));
-                const pendingFacultyData = pendingFacultySnapshot.val();
-
-                await set(ref(db, `users/${uid}`), {
-                    name: pendingFacultyData.name,
-                    email: pendingFacultyData.email,
-                    mobile: pendingFacultyData.mobile || "", // Ensure all fields are saved
-                    major: pendingFacultyData.major || "",
-                    staffId: pendingFacultyData.staffId || "",
-                    doj: pendingFacultyData.doj || "",
-                    classSection: pendingFacultyData.classSection || "",
-                    gender: pendingFacultyData.gender || "",
-                    address: pendingFacultyData.address || "",
-                    workingType: pendingFacultyData.workingType || "",
-                    role: "faculty",
-                    profilePhoto: pendingFacultyData.profilePhoto // Save the profile photo here
-                });
-
-                await remove(ref(db, `pending_faculties/${btoa(email)}`));
-
-                alert("✅ Faculty successfully added.");
-                document.querySelector(".modal").remove();
-                showFaculties();
-                showPendingFaculties();
-            } catch (error) {
-                alert("❌ Error: " + error.message);
-            } finally {
-                await deleteApp(tempApp);
-            }
-        };
-
-        window.resendOtp = function(email, name) {
-            const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-            const encodedEmail = btoa(email);
-
-            const tempRef = ref(db, `pending_faculties/${encodedEmail}`);
-            update(tempRef, {
-                otp: newOtp,
-                updatedAt: Date.now()
-            }).then(() => {
-                // !! IMPORTANT: Replace "service_bb1lh51" and "template_0kq074a" with your actual EmailJS Service ID and Template ID !!
-                emailjs.send("service_bb1lh51", "template_0kq074a", {
-                    to_email: email,
-                    from_name: "Admin Panel",
-                    to_name: name,
-                    message: `Hi ${name}, your new OTP is: ${newOtp}`
-                }).then(() => {
-                    alert(`📩 OTP resent to ${email}`);
-                    showPendingFaculties();
-                }).catch(err => {
-                    alert("❌ Failed to send OTP: " + JSON.stringify(err));
-                });
-            }).catch(err => alert("❌ " + err.message));
-        };
-
-        window.removePendingFaculty = function(email) {
-            if (!confirm(`⚠️ Remove pending faculty: ${email}?`)) return;
-            const encodedEmail = btoa(email);
-            remove(ref(db, `pending_faculties/${encodedEmail}`)).then(() => {
-                alert("✅ Pending faculty removed.");
-                showPendingFaculties();
-            }).catch(err => alert("❌ " + err.message));
-        };
-
-        // --- Profile Photo Handling (Unified & Interactive) ---
-        window.openPhotoDialog = function () {
-            const dialog = document.createElement("div");
-            dialog.className = "modal";
-            dialog.innerHTML = `
-                <div class="modal-content" style="text-align:center;">
-                    <span class="close" onclick="closePhotoDialog()">&times;</span>
-                    <h3>Upload or Capture Profile Photo</h3>
-                    
-                    <input type="file" accept="image/*" onchange="handleFileUpload(event)" /><br><br>
-                    <video id="cameraStream" width="280" height="210" autoplay playsinline style="border: 1px solid #ccc; background-color: #eee;"></video><br>
-                    <button onclick="capturePhotoFromCamera()">📸 Capture Photo</button><br><br>
-                    <button onclick="closePhotoDialog()">✅ Done</button>
-                </div>`;
-            document.body.appendChild(dialog);
-            startCamera(); // Automatically start camera when dialog opens
-        };
-
-        function startCamera() {
-            const video = document.getElementById("cameraStream");
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("Your browser does not support camera access.");
-                return;
-            }
-
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(stream => {
-                    currentVideoStream = stream;
-                    video.srcObject = stream;
-                    video.play(); // Start playing the stream
-                })
-                .catch(err => {
-                    console.error("Camera access error:", err);
-                    alert("❌ Unable to access camera. Please check permissions: " + err.message);
-                    video.style.display = 'none'; // Hide video if camera fails
-                    // Optionally hide the capture button if camera fails
-                    const captureButton = document.querySelector('.modal-content button[onclick="capturePhotoFromCamera()"]');
-                    if (captureButton) {
-                        captureButton.style.display = 'none';
-                    }
-                });
-        }
-
-        function stopCamera() {
-            if (currentVideoStream) {
-                currentVideoStream.getTracks().forEach(track => track.stop());
-                currentVideoStream = null;
-            }
-            const video = document.getElementById("cameraStream");
-            if (video) {
-                video.srcObject = null;
-            }
-        }
-
-        window.capturePhotoFromCamera = function () {
-            const video = document.getElementById("cameraStream");
-            if (!video.srcObject || video.videoWidth === 0) { // Check if video stream is active and has dimensions
-                alert("Camera not active or not granted permissions. Please ensure camera is on and try again.");
-                return;
-            }
-
-            const canvas = document.createElement("canvas");
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataURL = canvas.toDataURL("image/jpeg", 0.9); // Use JPEG for smaller size, 0.9 quality
-            
-            stopCamera(); // Stop camera after capturing
-            openPreviewModal(dataURL);
-        };
-
-        window.handleFileUpload = function (event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            if (!file.type.startsWith('image/')) {
-                alert("Please upload an image file.");
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = () => {
-                stopCamera(); // Stop camera if file is uploaded
-                openPreviewModal(reader.result);
-            };
-            reader.readAsDataURL(file);
-        };
-
-        window.openPreviewModal = function (dataUrl) {
-            // Close any previous preview modals to avoid stacking
-            document.querySelectorAll(".modal").forEach(m => {
-                if (m.querySelector('#previewImg')) m.remove();
-            });
-
-            const modal = document.createElement("div");
-            modal.className = "modal";
-            modal.innerHTML = `
-                <div class="modal-content" style="text-align:center">
-                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-                    <h3>Preview & Confirm Photo</h3>
-                    <img id="previewImg" src="${dataUrl}" style="max-width:100%; max-height: 300px; border:1px solid #ccc; object-fit: contain;" /><br><br>
-                    <button onclick="confirmPhoto('${dataUrl}')">✅ Confirm Photo</button>
-                </div>`;
-            document.body.appendChild(modal);
-        };
-
-        window.confirmPhoto = function (dataURL) {
-            capturedImageBlob = dataURL; // Update the global capturedImageBlob
-            const photoPreview = document.getElementById("photoPreview");
-            const photoStatus = document.getElementById("photoStatus");
-
-            if (photoPreview) {
-                photoPreview.src = dataURL;
-                photoPreview.style.display = 'block'; // Make sure it's visible
-            }
-            if (photoStatus) {
-                photoStatus.textContent = "Photo selected!";
-                photoStatus.style.color = "#4CAF50";
-            }
-
-            alert("✅ Profile photo successfully selected.");
-            document.querySelectorAll(".modal").forEach(m => m.remove()); // Close all open modals
-        };
-
-        window.closePhotoDialog = function () {
-            stopCamera(); // Ensure camera is stopped when the dialog is closed
-            // Only remove the specific dialog if it's open, not all modals
-            const photoDialog = document.querySelector('.modal'); // Simpler selection after general modal improvements
-            if (photoDialog) {
-                photoDialog.remove();
-            }
-        };
-
-        // --- Add Faculty Function (Updated) ---
-        window.addFaculty = function () {
-            const name = document.getElementById("facultyName").value.trim();
-            const email = document.getElementById("facultyEmail").value.trim();
-            const mobile = document.getElementById("facultyMobile").value.trim();
-            const major = document.getElementById("facultyMajor").value.trim();
-            const staffId = document.getElementById("facultyStaffId").value.trim();
-            const doj = document.getElementById("facultyDOJ").value;
-            const classSection = document.getElementById("facultyClassSection").value.trim();
-            const gender = document.getElementById("facultyGender").value;
-            const address = document.getElementById("facultyAddress").value.trim();
-            const workingType = document.getElementById("facultyWorkingType").value;
-
-            if (!name || !email || !mobile || !major || !staffId || !doj || !classSection || !gender || !address || !workingType) {
-                alert("Please fill all faculty details.");
-                return;
-            }
-
-            if (!capturedImageBlob || capturedImageBlob === "https://via.placeholder.com/150?text=No+Photo") {
-                alert("⚠️ Please select a profile photo.");
-                return;
-            }
-
-            console.log("Selected Photo DataURL:", capturedImageBlob);
-
-            const otp = Math.floor(100000 + Math.random() * 900000).toString();
-            const encodedEmail = btoa(email); // Correctly encode for Firebase path
-
-            // Save pending faculty data to Firebase
-            const tempRef = ref(db, `pending_faculties/${encodedEmail}`);
-            set(tempRef, {
-                name,
-                email,
-                mobile,
-                major,
-                staffId,
-                doj,
-                classSection,
-                gender,
-                address,
-                workingType,
-                otp,
-                profilePhoto: capturedImageBlob, // Save the captured image data
-                createdAt: Date.now()
-            }).then(() => {
-                // !! IMPORTANT: Replace with your actual EmailJS Service ID and Template ID !!
-                emailjs.send("service_bb1lh51", "template_0kq074a", {
-                    to_email: email,
-                    from_name: "Admin Panel",
-                    to_name: name,
-                    message: `Hi ${name}, your OTP is: ${otp}`
-                }).then(() => {
-                    alert(`✅ OTP sent to ${email}. Please ask the faculty to verify.`);
-                    showPendingFaculties();
-                }).catch(err => {
-                    alert(`❌ Failed to send OTP: ${JSON.stringify(err)}`);
-                });
-
-                // Show modal for OTP and password entry
-                showOTPInput(email, otp, name);
-
-                // Clear form inputs and reset photo preview
-                document.getElementById("facultyName").value = "";
-                document.getElementById("facultyEmail").value = "";
-                document.getElementById("facultyMobile").value = "";
-                document.getElementById("facultyMajor").value = "";
-                document.getElementById("facultyStaffId").value = "";
-                document.getElementById("facultyDOJ").value = "";
-                document.getElementById("facultyClassSection").value = "";
-                document.getElementById("facultyGender").value = "";
-                document.getElementById("facultyAddress").value = "";
-                document.getElementById("facultyWorkingType").value = "";
-                
-                capturedImageBlob = null; // Reset captured image
-                document.getElementById("photoPreview").src = "https://via.placeholder.com/150?text=No+Photo";
-                document.getElementById("photoStatus").textContent = "No photo selected";
-
-            }).catch((err) => {
-                alert("❌ Failed to save data: " + err.message);
-            });
-        };
-
-        // --- Faculty List & Management (UPDATED TO CARD VIEW) ---
-        window.showPendingFaculties = function () {
-            const pendingContainer = document.getElementById("pendingFacultyList");
             pendingContainer.innerHTML = `<div class="card-container" id="pendingFacultyCardContainer"></div>`;
             const cardContainer = document.getElementById("pendingFacultyCardContainer");
 
@@ -1138,9 +424,9 @@
                         <p><strong>Email:</strong> ${faculty.email}</p>
                         <p><strong>Status:</strong> Pending Verification</p>
                         <div class="card-actions">
-                            <button class="icon-btn resend-btn" title="Resend OTP" onclick="resendOtp('${faculty.email}', '${faculty.name}')">📩</button>
-                            <button class="icon-btn verify-btn" title="Verify" onclick="startFacultyVerificationFromList('${faculty.email}')">✅</button>
-                            <button class="icon-btn delete-btn" title="Remove" onclick="removePendingFaculty('${faculty.email}')">🗑️</button>
+                            <button class="icon-btn resend-btn" title="Resend OTP" onclick="resendOtpGeneric('${faculty.email}', '${faculty.name}', 'faculty')">📩</button>
+                            <button class="icon-btn verify-btn" title="Verify" onclick="showOTPModal('${faculty.email}', '${faculty.otp}', '${faculty.name}', 'faculty')">✅</button>
+                            <button class="icon-btn delete-btn" title="Remove" onclick="removePendingGeneric('${faculty.email}', 'faculty')">🗑️</button>
                         </div>
                     `;
                     cardContainer.appendChild(pendingFacultyCard);
@@ -1405,96 +691,896 @@
         function displayAllVanSummaries() {
             const vansContainer = document.getElementById("vans");
             vansContainer.innerHTML = "";
-            const attendanceRoot = ref(db, "attendance");
-            get(attendanceRoot).then(snapshot => {
-                const vans = snapshot.val();
-                if (!vans) {
-                    vansContainer.innerHTML = "<p>No van attendance data available.</p>";
+            const today = getFormattedDate(0); // Fetch all registered vans first
+            get(ref(db, "vans")).then(vansSnapshot => {
+                const registeredVans = vansSnapshot.val();
+                if (!registeredVans) {
+                    vansContainer.innerHTML = "<p>No vans registered yet.</p>";
                     return;
                 }
-
-                const today = getFormattedDate(0);
-
-                Object.keys(vans).forEach(vanKey => {
-                    const records = vans[vanKey];
-                    const count = Object.values(records || {}).filter(r => r.timestamp && r.timestamp.startsWith(today)).length;
-
-                    const container = document.createElement("div");
-                    container.className = "van-box";
-                    container.innerHTML = `
-                        <h3>${vanKey}</h3>
-                        <p>Total Students Today: ${count}</p>
-                        <button onclick="showVanDetails('${vanKey}')">Show Students</button>`;
-                    vansContainer.appendChild(container);
+                // Now fetch attendance for all vans
+                get(ref(db, "attendance")).then(attendanceSnapshot => {
+                    const allAttendance = attendanceSnapshot.val() || {};
+                    Object.values(registeredVans).forEach(van => {
+                        const vanNumber = van.vanNumber;
+                        const records = allAttendance[vanNumber];
+                        const count = Object.values(records || {}).filter(r => r.timestamp && r.timestamp.startsWith(today)).length;
+                        const container = document.createElement("div");
+                        container.className = "van-box";
+                        container.innerHTML = `
+                            <h3>${vanNumber}</h3>
+                            <p>Route: ${van.route}</p>
+                            <p>Driver: ${van.assignedDriverName || 'N/A'}</p>
+                            <p>Students Present Today: ${count}</p>
+                            <button onclick="showVanDetails('${vanNumber}')">View Attendance</button>`;
+                        vansContainer.appendChild(container);
+                    });
+                }).catch(error => {
+                    console.error("Error fetching attendance for van summaries:", error);
+                    vansContainer.innerHTML = `<p>Error loading attendance data: ${error.message}</p>`;
                 });
             }).catch(error => {
-                console.error("Error fetching van summaries:", error);
-                vansContainer.innerHTML = `<p>Error loading van data: ${error.message}</p>`;
+                console.error("Error fetching registered vans:", error);
+                vansContainer.innerHTML = `<p>Error loading registered vans: ${error.message}</p>`;
             });
         }
 
-        // --- Navigation & Initial Load ---
-        function showSection(id) {
-            const sections = document.querySelectorAll("main > section");
-            sections.forEach(sec => sec.style.display = "none");
-            const sectionToShow = document.getElementById(id);
-            if (sectionToShow) sectionToShow.style.display = "block";
+        // --- NEW FUNCTIONS FOR DRIVERS ---
+        window.addDriver = function() {
+            const name = document.getElementById("driverName").value.trim();
+            const email = document.getElementById("driverEmail").value.trim();
+            const mobile = document.getElementById("driverMobile").value.trim();
+            const license = document.getElementById("driverLicense").value.trim();
+            const doj = document.getElementById("driverDOJ").value;
+            const address = document.getElementById("driverAddress").value.trim();
+
+            if (!name || !email || !mobile || !license || !doj || !address) {
+                alert("Please fill all driver details.");
+                return;
+            }
+
+            if (!capturedImageBlob || capturedImageBlob === "https://via.placeholder.com/150?text=No+Photo") {
+                alert("⚠️ Please select a profile photo.");
+                return;
+            }
+
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            const encodedEmail = btoa(email); // Correctly encode for Firebase path
+
+            // Save pending driver data to Firebase
+            const tempRef = ref(db, `pending_drivers/${encodedEmail}`);
+            set(tempRef, {
+                name,
+                email,
+                mobile,
+                license,
+                doj,
+                address,
+                otp,
+                profilePhoto: capturedImageBlob,
+                createdAt: Date.now()
+            }).then(() => {
+                // !! IMPORTANT: Replace "service_bb1lh51" and "template_0kq074a" with your actual EmailJS Service ID and Template ID !!
+                emailjs.send("service_bb1lh51", "template_0kq074a", {
+                    to_email: email,
+                    from_name: "Admin Panel",
+                    to_name: name,
+                    message: `Hi ${name}, your OTP for school system is: ${otp}`
+                }).then(() => {
+                    alert(`✅ OTP sent to ${email}. Please ask the driver to verify.`);
+                    showPendingDrivers();
+                }).catch(err => {
+                    alert(`❌ Failed to send OTP: ${JSON.stringify(err)}`);
+                });
+
+                // Show modal for OTP and password entry
+                showOTPModal(email, otp, name, 'driver');
+
+                // Clear form inputs and reset photo preview
+                document.getElementById("driverName").value = "";
+                document.getElementById("driverEmail").value = "";
+                document.getElementById("driverMobile").value = "";
+                document.getElementById("driverLicense").value = "";
+                document.getElementById("driverDOJ").value = "";
+                document.getElementById("driverAddress").value = "";
+                capturedImageBlob = null;
+                document.getElementById("driverPhotoPreview").src = "https://via.placeholder.com/150?text=No+Photo"; // MODIFIED ID
+                document.getElementById("driverPhotoStatus").textContent = "No photo selected"; // MODIFIED ID
+
+            }).catch((err) => {
+                alert("❌ Failed to save data: " + err.message);
+            });
+        };
+        // --- Add Student Function ---
+    window.addStudent = async function () {
+        const studentName = document.getElementById("studentName").value.trim();
+        const studentRollNo = document.getElementById("studentRollNo").value.trim();
+        const studentClass = document.getElementById("studentClass").value.trim();
+        const studentFatherName = document.getElementById("studentFatherName").value.trim();
+        const studentParentsMobile = document.getElementById("studentParentsMobile").value.trim();
+        console.log("Captured Student Parents Mobile:", studentParentsMobile);
+        const studentGender = document.getElementById("studentGender").value;
+        const studentVanId = document.getElementById("studentVan").value;
+        const studentAddress = document.getElementById("studentAddress").value.trim();
+
+        if (!studentName || !studentRollNo || !studentClass || !studentFatherName || !studentParentsMobile || !studentGender || !studentVanId || !studentAddress) {
+            alert("Please fill all student details.");
+            return;
         }
 
-        window.logout = function () {
-            signOut(auth).then(() => window.location.href = "index.html")
-                .catch(error => alert("Logout failed: " + error.message));
+        // Fetch van details (number and route) using the van ID
+        let studentVanNumber = '';
+        let studentVanRoute = '';
+        try {
+            const vanSnapshot = await get(ref(db, `vans/${studentVanId}`));
+            if (vanSnapshot.exists()) {
+                const vanData = vanSnapshot.val();
+                studentVanNumber = vanData.vanNumber;
+                studentVanRoute = vanData.route;
+            } else {
+                alert("Selected van not found. Please choose a valid van.");
+                return;
+            }
+        } catch (error) {
+            alert("Error fetching van details: " + error.message);
+            return;
+        }
+
+        const studentData = {
+            name: studentName,
+            rollNo: studentRollNo,
+            class: studentClass,
+            fatherName: studentFatherName,
+            parentsMobile: studentParentsMobile,
+            gender: studentGender,
+            vanId: studentVanId,
+            vanNumber: studentVanNumber, // Store van number
+            vanRoute: studentVanRoute,   // Store van route
+            address: studentAddress,
+            profilePhoto: capturedImageBlob // Save the captured image data (will be null if no photo)
         };
 
-        window.onload = () => {
-            displayAllVanSummaries();
-            showFaculties();
-            showPendingFaculties();
-            showSection("van-register"); // Default section on load
-            
-            document.getElementById("nav-add-faculty").onclick = () => showSection("add-faculty");
-            document.getElementById("nav-faculty-list").onclick = () => { showSection("faculty-list"); showFaculties(); }; // Refresh list on click
-            document.getElementById("nav-home").onclick = () => showSection("van-register");
-            document.getElementById("nav-pending-faculty").onclick = () => { showSection("pending-faculty"); showPendingFaculties(); }; // Refresh list on click
+        try {
+            // Generate a unique key for the new student
+            const newStudentRef = push(ref(db, 'students'));
+            await set(newStudentRef, studentData);
+
+            Swal.fire('Success!', 'Student added successfully!', 'success');
+
+            // Clear form inputs
+            document.getElementById("studentName").value = "";
+            document.getElementById("studentRollNo").value = "";
+            document.getElementById("studentClass").value = "";
+            document.getElementById("studentFatherName").value = "";
+            document.getElementById("studentParentsMobile").value = "";
+            document.getElementById("studentGender").value = "";
+            document.getElementById("studentVan").value = ""; // Reset dropdown
+            document.getElementById("studentAddress").value = "";
+
+            // Reset photo specific variables and preview for the next addition
+            capturedImageBlob = null;
+            document.getElementById('studentPhotoPreview').src = "https://via.placeholder.com/150?text=No+Photo";
+
+            // Refresh student list after adding
+            showStudents(); 
+
+        } catch (error) {
+            console.error("Error adding student:", error);
+            Swal.fire('Error!', 'Failed to add student: ' + error.message, 'error');
+        }
+    };
+
+        window.showPendingDrivers = function() {
+            const pendingContainer = document.getElementById("pendingDriverList");
+            pendingContainer.innerHTML = `<div class="card-container" id="pendingDriverCardContainer"></div>`;
+            const cardContainer = document.getElementById("pendingDriverCardContainer");
+
+            get(ref(db, "pending_drivers")).then(snapshot => {
+                const data = snapshot.val();
+                if (!data) {
+                    cardContainer.innerHTML = `<p>No pending drivers.</p>`;
+                    return;
+                }
+
+                for (let encodedEmail in data) {
+                    const driver = data[encodedEmail];
+                    const pendingDriverCard = document.createElement("div");
+                    pendingDriverCard.className = "pending-driver-card";
+                    pendingDriverCard.innerHTML = `
+                        <img src="${driver.profilePhoto || 'https://via.placeholder.com/100?text=No+Photo'}" alt="Profile Photo" />
+                        <h4>${driver.name}</h4>
+                        <p><strong>Email:</strong> ${driver.email}</p>
+                        <p><strong>Status:</strong> Pending Verification</p>
+                        <div class="card-actions">
+                            <button class="icon-btn resend-btn" title="Resend OTP" onclick="resendOtpGeneric('${driver.email}', '${driver.name}', 'driver')">📩</button>
+                            <button class="icon-btn verify-btn" title="Verify" onclick="showOTPModal('${driver.email}', '${driver.otp}', '${driver.name}', 'driver')">✅</button>
+                            <button class="icon-btn delete-btn" title="Remove" onclick="removePendingGeneric('${driver.email}', 'driver')">🗑️</button>
+                        </div>
+                    `;
+                    cardContainer.appendChild(pendingDriverCard);
+                }
+            }).catch(error => {
+                console.error("Error fetching pending drivers:", error);
+                cardContainer.innerHTML = `<p>Error loading pending drivers: ${error.message}</p>`;
+            });
         };
 
+        window.showDrivers = function() {
+            const listContainer = document.getElementById("driver-list-container");
+            listContainer.innerHTML = `<div class="card-container" id="driverCardContainer"></div>`;
+            const cardContainer = document.getElementById("driverCardContainer");
+
+            get(ref(db, "users")).then(snapshot => {
+                const data = snapshot.val();
+                if (!data) {
+                    cardContainer.innerHTML = `<p>No drivers registered.</p>`;
+                    return;
+                }
+
+                let foundDrivers = false;
+                for (let uid in data) {
+                    if (data[uid].role === "driver") {
+                        foundDrivers = true;
+                        const driver = data[uid];
+                        const driverCard = document.createElement("div");
+                        driverCard.className = "driver-card";
+                        driverCard.innerHTML = `
+                            <img src="${driver.profilePhoto || 'https://via.placeholder.com/100?text=No+Photo'}" alt="Profile Photo" />
+                            <h4>${driver.name}</h4>
+                            <p><strong>Email:</strong> ${driver.email}</p>
+                            <p><strong>Mobile:</strong> ${driver.mobile}</p>
+                            <p><strong>License:</strong> ${driver.license}</p>
+                            <div class="card-actions">
+                                <button class="icon-btn edit-btn" title="Edit" onclick="editDriver('${uid}')">✏️</button>
+                                <button class="icon-btn delete-btn" title="Remove" onclick="removeDriver('${uid}')">🗑️</button>
+                                <button class="icon-btn reset-btn" title="Reset Password" onclick="resetPassword('${driver.email}')">🔑</button>
+                            </div>
+                        `;
+                        cardContainer.appendChild(driverCard);
+                    }
+                }
+                if (!foundDrivers) {
+                    cardContainer.innerHTML = `<p>No drivers registered.</p>`;
+                }
+            }).catch(error => {
+                console.error("Error fetching drivers:", error);
+                cardContainer.innerHTML = `<p>Error loading drivers: ${error.message}</p>`;
+            });
+        };
+
+        window.editDriver = function(uid) {
+            get(ref(db, `users/${uid}`)).then(snapshot => {
+                const driver = snapshot.val();
+                if (!driver) {
+                    alert("Driver not found for editing.");
+                    return;
+                }
+
+                const modal = document.createElement("div");
+                modal.className = "modal";
+                modal.innerHTML = `
+                    <div class="modal-content edit-form-modal-content">
+                        <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                        <h3>Edit Driver Details</h3>
+                        <input id="editDriverUid" type="hidden" value="${uid}">
+                        <label for="editDriverName">Full Name:</label>
+                        <input id="editDriverName" type="text" value="${driver.name || ''}">
+
+                        <label for="editDriverEmail">Email:</label>
+                        <input id="editDriverEmail" type="email" value="${driver.email || ''}" disabled>
+
+                        <label for="editDriverMobile">Mobile Number:</label>
+                        <input id="editDriverMobile" placeholder="Mobile Number" type="tel" value="${driver.mobile || ''}">
+
+                        <label for="editDriverLicense">License Number:</label>
+                        <input id="editDriverLicense" placeholder="License Number" type="text" value="${driver.license || ''}">
+
+                        <label for="editDriverDOJ">Date of Joining:</label>
+                        <input id="editDriverDOJ" type="date" value="${driver.doj || ''}">
+
+                        <label for="editDriverAddress">Address:</label>
+                        <textarea id="editDriverAddress" placeholder="Address" rows="3">${driver.address || ''}</textarea>
+                        
+                        <div class="modal-actions">
+                            <button onclick="submitEditDriver('${uid}')">Update Driver</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+            }).catch(error => {
+                alert("Error fetching driver details for edit: " + error.message);
+            });
+        };
+
+        window.submitEditDriver = async function(uid) {
+            const name = document.getElementById("editDriverName").value.trim();
+            const mobile = document.getElementById("editDriverMobile").value.trim();
+            const license = document.getElementById("editDriverLicense").value.trim();
+            const doj = document.getElementById("editDriverDOJ").value;
+            const address = document.getElementById("editDriverAddress").value.trim();
+
+            if (!name || !mobile || !license || !doj || !address) {
+                alert("Please fill all details to update.");
+                return;
+            }
+
+            try {
+                await update(ref(db, `users/${uid}`), {
+                    name,
+                    mobile,
+                    license,
+                    doj,
+                    address
+                });
+
+                alert("✅ Driver updated successfully.");
+                showDrivers(); // Refresh the list
+                document.querySelector(".modal").remove(); // Close the modal
+            } catch (error) {
+                alert("❌ Error updating driver: " + error.message);
+            }
+        };
+
+        window.removeDriver = function (uid) {
+            if (!confirm("⚠️ Are you sure you want to remove this driver? This action is irreversible.")) return;
+            remove(ref(db, `users/${uid}`)).then(() => {
+                alert("✅ Driver Removed");
+                showDrivers();
+            }).catch(err => alert("❌ Failed to remove driver: " + err.message));
+        };
+        
+        // --- NEW FUNCTIONS FOR VAN MANAGEMENT ---
+
+        window.addVan = async function () {
+            const vanNumber = document.getElementById("vanNumber").value.trim();
+            const vanModel = document.getElementById("vanModel").value.trim();
+            const vanCapacity = document.getElementById("vanCapacity").value.trim();
+            const vanRoute = document.getElementById("vanRoute").value.trim();
+            const assignedDriverId = document.getElementById("assignDriver").value;
+            const assignedDriverName = document.getElementById("assignDriver").options[document.getElementById("assignDriver").selectedIndex].text;
+
+            if (!vanNumber || !vanModel || !vanCapacity || !vanRoute || !assignedDriverId) {
+                alert("Please fill all van details and assign a driver.");
+                return;
+            }
+
+            try {
+                // Push a new van entry with a unique ID
+                const newVanRef = push(ref(db, 'vans'));
+                await set(newVanRef, {
+                    vanNumber: vanNumber,
+                    model: vanModel,
+                    capacity: vanCapacity,
+                    route: vanRoute,
+                    assignedDriverId: assignedDriverId,
+                    assignedDriverName: assignedDriverName // Store driver's name for easier display
+                });
+
+                alert("✅ Van added successfully!");
+                // Clear form inputs
+                document.getElementById("vanNumber").value = "";
+                document.getElementById("vanModel").value = "";
+                document.getElementById("vanCapacity").value = "";
+                document.getElementById("vanRoute").value = "";
+                document.getElementById("assignDriver").value = ""; // Reset dropdown
+                showVans(); // Refresh the van list
+            } catch (error) {
+                alert("❌ Error adding van: " + error.message);
+            }
+        };
+
+        window.showVans = function () {
+            const vanListContainer = document.getElementById("vanList");
+            vanListContainer.innerHTML = `<p>Loading vans...</p>`; // Loading message
+
+            get(ref(db, "vans")).then(snapshot => {
+                const vans = snapshot.val();
+                vanListContainer.innerHTML = ""; // Clear loading message
+
+                if (!vans) {
+                    vanListContainer.innerHTML = `<p>No vans registered yet.</p>`;
+                    return;
+                }
+
+                const vanCardsContainer = document.createElement("div");
+                vanCardsContainer.className = "card-container";
+
+                // Iterate through vans and create cards
+                Object.keys(vans).forEach(vanId => {
+                    const van = vans[vanId];
+                    const vanCard = document.createElement("div");
+                    vanCard.className = "van-card";
+                    vanCard.innerHTML = `
+                        <h4>${van.vanNumber} (${van.model})</h4>
+                        <p><strong>Route:</strong> ${van.route}</p>
+                        <p><strong>Capacity:</strong> ${van.capacity}</p>
+                        <p><strong>Driver:</strong> ${van.assignedDriverName || 'N/A'}</p>
+                        <div class="card-actions">
+                            <button class="icon-btn edit-btn" title="Edit" onclick="editVan('${vanId}')">✏️</button>
+                            <button class="icon-btn delete-btn" title="Remove" onclick="removeVan('${vanId}')">🗑️</button>
+                        </div>
+                    `;
+                    vanCardsContainer.appendChild(vanCard);
+                });
+                vanListContainer.appendChild(vanCardsContainer);
+            }).catch(error => {
+                console.error("Error fetching vans:", error);
+                vanListContainer.innerHTML = `<p>Error loading vans: ${error.message}</p>`;
+            });
+        };
+
+        window.editVan = function (vanId) {
+            get(ref(db, `vans/${vanId}`)).then(snapshot => {
+                const van = snapshot.val();
+                if (!van) {
+                    alert("Van not found for editing.");
+                    return;
+                }
+
+                const modal = document.createElement("div");
+                modal.className = "modal";
+                modal.innerHTML = `
+                    <div class="modal-content edit-form-modal-content">
+                        <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                        <h3>Edit Van Details</h3>
+                        <input id="editVanId" type="hidden" value="${vanId}">
+                        <label for="editVanNumber">Van Number:</label>
+                        <input id="editVanNumber" type="text" value="${van.vanNumber || ''}">
+
+                        <label for="editVanModel">Model:</label>
+                        <input id="editVanModel" type="text" value="${van.model || ''}">
+
+                        <label for="editVanCapacity">Capacity:</label>
+                        <input id="editVanCapacity" type="number" value="${van.capacity || ''}">
+
+                        <label for="editVanRoute">Route:</label>
+                        <input id="editVanRoute" type="text" value="${van.route || ''}">
+
+                        <label for="editAssignedDriver">Assign Driver:</label>
+                        <select id="editAssignedDriver"></select>
+                        
+                        <div class="modal-actions">
+                            <button onclick="submitEditVan('${vanId}')">Update Van</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+
+                // Populate driver dropdown for editing
+                populateDriverDropdown("editAssignedDriver", van.assignedDriverId);
+
+            }).catch(error => {
+                alert("Error fetching van details for edit: " + error.message);
+            });
+        };
+
+        window.submitEditVan = async function (vanId) {
+            const vanNumber = document.getElementById("editVanNumber").value.trim();
+            const vanModel = document.getElementById("editVanModel").value.trim();
+            const vanCapacity = document.getElementById("editVanCapacity").value.trim();
+            const vanRoute = document.getElementById("editVanRoute").value.trim();
+            const assignedDriverId = document.getElementById("editAssignedDriver").value;
+            const assignedDriverName = document.getElementById("editAssignedDriver").options[document.getElementById("editAssignedDriver").selectedIndex].text;
+
+            if (!vanNumber || !vanModel || !vanCapacity || !vanRoute || !assignedDriverId) {
+                alert("Please fill all van details and assign a driver.");
+                return;
+            }
+
+            try {
+                await update(ref(db, `vans/${vanId}`), {
+                    vanNumber: vanNumber,
+                    model: vanModel,
+                    capacity: vanCapacity,
+                    route: vanRoute,
+                    assignedDriverId: assignedDriverId,
+                    assignedDriverName: assignedDriverName
+                });
+
+                alert("✅ Van updated successfully.");
+                showVans(); // Refresh the list
+                document.querySelector(".modal").remove(); // Close the modal
+            } catch (error) {
+                alert("❌ Error updating van: " + error.message);
+            }
+        };
+
+        window.removeVan = function (vanId) {
+            if (!confirm("⚠️ Are you sure you want to remove this van? This action is irreversible.")) return;
+            remove(ref(db, `vans/${vanId}`)).then(() => {
+                alert("✅ Van Removed");
+                showVans();
+            }).catch(err => alert("❌ Failed to remove van: " + err.message));
+        };
+        
+        // Function to populate driver dropdowns
+        async function populateDriverDropdown(dropdownId, selectedDriverId = null) {
+            const dropdown = document.getElementById(dropdownId);
+            if (!dropdown) return;
+
+            dropdown.innerHTML = '<option value="">Select Driver</option>'; // Default option
+
+            try {
+                const snapshot = await get(ref(db, 'users'));
+                const users = snapshot.val();
+                if (users) {
+                    Object.keys(users).forEach(uid => {
+                        const user = users[uid];
+                        if (user.role === 'driver') {
+                            const option = document.createElement('option');
+                            option.value = uid;
+                            option.textContent = user.name;
+                            if (selectedDriverId && selectedDriverId === uid) {
+                                option.selected = true;
+                            }
+                            dropdown.appendChild(option);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error("Error populating drivers:", error);
+                dropdown.innerHTML = '<option value="">Error loading drivers</option>';
+            }
+        }
+
+        // Call this when Add Van section is shown
+        window.loadAddVanDependencies = function() {
+            populateDriverDropdown("assignDriver");
+        };
+
+
+        // --- NEW FUNCTIONS FOR STUDENT MANAGEMENT ---
+
+
+        async function populateVanDropdown(dropdownId, selectedVanId = null) {
+            const dropdown = document.getElementById(dropdownId);
+            if (!dropdown) return;
+
+            dropdown.innerHTML = '<option value="">Select Van</option>'; // Default option
+
+            try {
+                const snapshot = await get(ref(db, 'vans'));
+                const vans = snapshot.val();
+                if (vans) {
+                    Object.keys(vans).forEach(vanId => {
+                        const van = vans[vanId];
+                        const option = document.createElement('option');
+                        option.value = vanId;
+                        option.textContent = `${van.vanNumber} (${van.route})`;
+                        if (selectedVanId && selectedVanId === vanId) {
+                            option.selected = true;
+                        }
+                        dropdown.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error("Error populating vans:", error);
+                dropdown.innerHTML = '<option value="">Error loading vans</option>';
+            }
+        }
+
+        window.loadAddStudentDependencies = function() {
+            populateVanDropdown("studentVan");
+        };
+
+       window.showStudents = function () {
+        const listContainer = document.getElementById("studentList");
+        listContainer.innerHTML = `<table class="styled-table">
+            <thead>
+                <tr>
+                    <th>Photo</th>
+                    <th>Name</th>
+                    <th>Roll No</th>
+                    <th>Class</th>
+                    <th>Father's Name</th>
+                    <th>Mobile</th>
+                    <th>Gender</th>
+                    <th>Van</th>
+                    <th>Address</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="studentTableBody"></tbody>
+        </table>`;
+        const tableBody = document.getElementById("studentTableBody");
+
+        get(ref(db, "students")).then(snapshot => {
+            const data = snapshot.val();
+            if (!data) {
+                tableBody.innerHTML = `<tr><td colspan="10">No students registered.</td></tr>`;
+                return;
+            }
+
+            for (let studentId in data) {
+                const student = data[studentId];
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+                    <td><img src="${student.profilePhoto || 'https://via.placeholder.com/50?text=No+Photo'}" alt="Photo" class="table-profile-photo"/></td>
+                    <td>${student.name}</td>
+                    <td>${student.rollNo}</td>
+                    <td>${student.class}</td>
+                    <td>${student.fatherName}</td>
+                    <td>${student.mobile}</td>
+                    <td>${student.gender}</td>
+                    <td>${student.vanNumber || 'N/A'} (${student.vanRoute || 'N/A'})</td>
+                    <td>${student.address}</td>
+                    <td>
+                        <button class="icon-btn edit-btn" title="Edit" onclick="editStudent('${studentId}')">✏️</button>
+                        <button class="icon-btn delete-btn" title="Remove" onclick="removeStudent('${studentId}')">🗑️</button>
+                    </td>
+                `;
+            }
+        }).catch(error => {
+            console.error("Error fetching students:", error);
+            tableBody.innerHTML = `<tr><td colspan="10">Error loading students: ${error.message}</td></tr>`;
+        });
+    };
+
+        window.editStudent = function (studentId) {
+            get(ref(db, `students/${studentId}`)).then(snapshot => {
+                const student = snapshot.val();
+                if (!student) {
+                    alert("Student not found for editing.");
+                    return;
+                }
+
+                const modal = document.createElement("div");
+                modal.className = "modal";
+                modal.innerHTML = `
+                    <div class="modal-content edit-form-modal-content">
+                        <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                        <h3>Edit Student Details</h3>
+                        <input id="editStudentId" type="hidden" value="${studentId}">
+                        <label for="editStudentName">Full Name:</label>
+                        <input id="editStudentName" type="text" value="${student.name || ''}">
+
+                        <label for="editStudentRollNo">Roll Number:</label>
+                        <input id="editStudentRollNo" type="text" value="${student.rollNo || ''}">
+
+                        <label for="editStudentClass">Class:</label>
+                        <input id="editStudentClass" type="text" value="${student.class || ''}">
+
+                        <label for="editStudentFatherName">Father's Name:</label>
+                        <input id="editStudentFatherName" type="text" value="${student.fatherName || ''}">
+
+                        <label for="editStudentMobile">Parent Mobile:</label>
+                        <input id="editStudentMobile" type="tel" value="${student.mobile || ''}">
+
+                        <label for="editStudentGender">Gender:</label>
+                        <select id="editStudentGender">
+                            <option value="">Select Gender</option>
+                            <option value="Male" ${student.gender === 'Male' ? 'selected' : ''}>Male</option>
+                            <option value="Female" ${student.gender === 'Female' ? 'selected' : ''}>Female</option>
+                            <option value="Others" ${student.gender === 'Others' ? 'selected' : ''}>Others</option>
+                        </select>
+
+                        <label for="editStudentVan">Assign Van:</label>
+                        <select id="editStudentVan"></select>
+
+                        <label for="editStudentAddress">Address:</label>
+                        <textarea id="editStudentAddress" placeholder="Address" rows="3">${student.address || ''}</textarea>
+                        
+                        <div class="modal-actions">
+                            <button onclick="submitEditStudent('${studentId}')">Update Student</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modal);
+
+                // Populate van dropdown for editing
+                populateVanDropdown("editStudentVan", student.vanId);
+
+            }).catch(error => {
+                alert("Error fetching student details for edit: " + error.message);
+            });
+        };
+
+        window.submitEditStudent = async function (studentId) {
+            const name = document.getElementById("editStudentName").value.trim();
+            const rollNo = document.getElementById("editStudentRollNo").value.trim();
+            const studentClass = document.getElementById("editStudentClass").value.trim();
+            const fatherName = document.getElementById("editStudentFatherName").value.trim();
+            const mobile = document.getElementById("editStudentMobile").value.trim();
+            const gender = document.getElementById("editStudentGender").value;
+            const vanId = document.getElementById("editStudentVan").value;
+            const address = document.getElementById("editStudentAddress").value.trim();
+
+            if (!name || !rollNo || !studentClass || !fatherName || !mobile || !gender || !vanId || !address) {
+                alert("Please fill all details to update.");
+                return;
+            }
+
+            try {
+                // Get van details to store vanNumber and route with student
+                const vanSnapshot = await get(ref(db, `vans/${vanId}`));
+                const vanDetails = vanSnapshot.val();
+
+                if (!vanDetails) {
+                    alert("Selected van not found. Please try again.");
+                    return;
+                }
+
+                await update(ref(db, `students/${studentId}`), {
+                    name,
+                    rollNo,
+                    class: studentClass,
+                    fatherName,
+                    mobile,
+                    gender,
+                    vanId: vanId,
+                    vanNumber: vanDetails.vanNumber,
+                    vanRoute: vanDetails.route,
+                    address
+                });
+
+                alert("✅ Student updated successfully.");
+                showStudents(); // Refresh the list
+                document.querySelector(".modal").remove(); // Close the modal
+            } catch (error) {
+                alert("❌ Error updating student: " + error.message);
+                console.error("Update Student Error:", error);
+            }
+        };
+
+        window.removeStudent = function (studentId) {
+            if (!confirm("⚠️ Are you sure you want to remove this student? This action is irreversible.")) return;
+            remove(ref(db, `students/${studentId}`)).then(() => {
+                alert("✅ Student Removed");
+                showStudents();
+            }).catch(err => alert("❌ Failed to remove student: " + err.message));
+        };
+
+
+        // --- Content Switching ---
+        window.switchContent = function (contentId) {
+            document.querySelectorAll(".main-content section").forEach(section => {
+                section.style.display = "none";
+            });
+            document.getElementById(contentId).style.display = "block";
+
+            // Add specific functions to run when a section is displayed
+            if (contentId === "dashboard-content") {
+                displayAllVanSummaries();
+            } else if (contentId === "faculty-list-content") {
+                showFaculties();
+                showPendingFaculties();
+            } else if (contentId === "driver-list-content") {
+                showDrivers();
+                showPendingDrivers();
+            } else if (contentId === "student-list-content") {
+                showStudents(); 
+            } else if (contentId === "add-van-content") {
+                loadAddVanDependencies(); // Load drivers for Add Van form
+            } else if (contentId === "van-list-content") {
+                showVans(); // Load and display vans
+            } else if (contentId === "add-student-content") {
+                loadAddStudentDependencies(); // Load vans for Add Student form
+            }
+        };
+
+        // Initialize dashboard view on load
+        document.addEventListener("DOMContentLoaded", () => {
+            switchContent("dashboard-content");
+        });
+	// Function to filter student list
+// Function to filter student list based on screenshot column order
+        function filterStudentList() {
+            const input = document.getElementById('studentSearchInput');
+            const filter = input.value.toUpperCase();
+            const tableBody = document.getElementById('studentTableBody'); // Target the tbody directly
+            if (!tableBody) {
+                console.warn("studentTableBody not found for filtering.");
+                return;
+            }
+            const rows = tableBody.getElementsByTagName('tr'); // Get all data rows
+
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                // Get cells based on your screenshot's column order:
+                // 0: Photo
+                // 1: Name
+                // 2: Roll No
+                // 3: Class
+                // 4: Father's Name
+                // 5: Mobile
+                // 6: Gender
+                // 7: Van (e.g., "MH01AB1234 (Route A)")
+                // 8: Address
+                // 9: Actions
+
+                const studentNameCell = row.cells[1];
+                const studentClassCell = row.cells[3];
+                const studentFatherNameCell = row.cells[4];
+                const studentMobileCell = row.cells[5];
+                const studentGenderCell = row.cells[6];
+                const studentVanCell = row.cells[7]; // This cell contains both van number and route
+
+                // Extract text content safely
+                const studentNameText = studentNameCell ? studentNameCell.textContent || studentNameCell.innerText : '';
+                const studentClassText = studentClassCell ? studentClassCell.textContent || studentClassCell.innerText : '';
+                const studentFatherNameText = studentFatherNameCell ? studentFatherNameCell.textContent || studentFatherNameCell.innerText : '';
+                const studentMobileText = studentMobileCell ? studentMobileCell.textContent || studentMobileCell.innerText : '';
+                const studentGenderText = studentGenderCell ? studentGenderCell.textContent || studentGenderCell.innerText : '';
+                const studentVanText = studentVanCell ? studentVanCell.textContent || studentVanCell.innerText : '';
+
+                // Check if the filter text is present in any of the relevant columns
+                if (studentNameText.toUpperCase().indexOf(filter) > -1 ||
+                    studentClassText.toUpperCase().indexOf(filter) > -1 ||
+                    studentMobileText.toUpperCase().indexOf(filter) > -1 ||
+                    studentVanText.toUpperCase().indexOf(filter) > -1 ||
+                    studentGenderText.toUpperCase().indexOf(filter) > -1 ||
+                    studentFatherNameText.toUpperCase().indexOf(filter) > -1) {
+                    row.style.display = ""; // Show the row
+                } else {
+                    row.style.display = "none"; // Hide the row
+                }
+            }
+        }
+        window.filterStudentList = filterStudentList; // Make the function globally accessible
     </script>
 </head>
 <body>
     <nav>
-        <h1>🛡️ Admin Panel</h1>
+        <h1>Admin Dashboard</h1>
         <div class="nav-links">
-            <a href="#" id="nav-home">Home</a>
-            <div class="dropdown">
-                <a href="#">Faculty</a>
+            <a href="#" onclick="switchContent('dashboard-content')">📊 Dashboard</a>
+            
+            <div class="nav-item dropdown">
+                <a href="#" class="dropbtn">🧑‍🏫 Faculty</a>
                 <div class="dropdown-content">
-                    <a href="#" id="nav-add-faculty">Add Faculty</a>
-                    <a href="#" id="nav-faculty-list">Faculty List</a>
-                    <a href="#" id="nav-pending-faculty">Pending List</a>
+                    <a href="#" onclick="switchContent('add-faculty-content')">➕ Add Faculty</a>
+                    <a href="#" onclick="switchContent('faculty-list-content')">📄 Faculty List</a>
+                    <a href="#" onclick="switchContent('pending-faculty-list')">⏳ Pending Faculty</a>
                 </div>
             </div>
-            <a href="#van-register">Van Register</a>
-            <a href="#student-register">Add Student</a> 
+
+            <div class="nav-item dropdown">
+                <a href="#" class="dropbtn">🚌 Driver</a>
+                <div class="dropdown-content">
+                    <a href="#" onclick="switchContent('add-driver-content')">➕ Add Driver</a>
+                    <a href="#" onclick="switchContent('driver-list-content')">📄 Driver List</a>
+                    <a href="#" onclick="switchContent('pending-driver-list')">⏳ Pending Driver</a>
+                </div>
+            </div>
+
+            <div class="nav-item dropdown">
+                <a href="#" class="dropbtn">🧑‍🎓 Student</a>
+                <div class="dropdown-content">
+                    <a href="#" onclick="switchContent('add-student-content')">➕ Add Student</a>
+                    <a href="#" onclick="switchContent('student-list-content')">📄 Student List</a>
+                </div>
+            </div>
+
+            <div class="nav-item dropdown">
+                <a href="#" class="dropbtn">🚐 Van</a>
+                <div class="dropdown-content">
+                    <a href="#" onclick="switchContent('add-van-content')">➕ Add Van</a>
+                    <a href="#" onclick="switchContent('van-list-content')">📄 Van List</a>
+                </div>
+            </div>
+
+            <a href="#" onclick="signOut(auth)">🚪 Logout</a>
         </div>
-        <button onclick="logout()">🚪 Logout</button>
     </nav>
 
-    <main>
-        <section id="add-faculty" style="display: none;">
-            <h3>➕ Add Faculty</h3>
+    <main class="main-content">
+        <section id="dashboard-content">
+            <h3>📊 Dashboard</h3>
+            <div class="card-container" id="vans">
+                <p>Loading van summaries...</p>
+            </div>
+        </section>
 
+        <section id="add-faculty-content" style="display: none;">
+            <h3>➕ Add Faculty</h3>
             <div class="form-grid">
                 <input id="facultyName" placeholder="Full Name" type="text" />
                 <input id="facultyEmail" placeholder="Email" type="email" />
                 <input id="facultyMobile" placeholder="Mobile Number" type="tel" />
-                <input id="facultyMajor" placeholder="Major" type="text" />
+                <input id="facultyMajor" placeholder="Major Subject" type="text" />
                 <input id="facultyStaffId" placeholder="Staff ID" type="text" />
-                
                 <div>
                     <label for="facultyDOJ">Date of Joining:</label>
                     <input id="facultyDOJ" type="date" />
                 </div>
-
+                <input id="facultyClassSection" placeholder="Class/Section Handling" type="text" />
                 <div>
                     <label for="facultyGender">Gender:</label>
                     <select id="facultyGender">
@@ -1504,7 +1590,7 @@
                         <option value="Others">Others</option>
                     </select>
                 </div>
-                
+                <textarea id="facultyAddress" placeholder="Address" rows="3" class="full-width"></textarea>
                 <div>
                     <label for="facultyWorkingType">Working Type:</label>
                     <select id="facultyWorkingType">
@@ -1513,43 +1599,129 @@
                         <option value="Non-Teaching">Non-Teaching</option>
                     </select>
                 </div>
-
-                <input id="facultyClassSection" placeholder="Class/Section Handling (e.g., 10th A, Grade 5)" class="full-width" type="text" />
-                <textarea id="facultyAddress" placeholder="Address" rows="3" class="full-width"></textarea>
-            </div>
-
-            <div class="photo-upload-section">
-                <h4>📸 Profile Photo</h4>
-                <div class="photo-controls">
-                    <button onclick="openPhotoDialog()">Upload / Capture Photo</button>
-                </div>
-                <div class="photo-preview-container">
-                    <img id="photoPreview" src="https://via.placeholder.com/150?text=No+Photo" alt="Profile Photo Preview" />
+                <div class="full-width">
+                    <button onclick="openPhotoDialog('faculty')">📸 Upload/Capture Photo</button>
+                    <img id="photoPreview" src="https://via.placeholder.com/150?text=No+Photo" alt="Profile Preview" style="display:none; max-width: 100px; max-height: 100px; margin-top: 10px; border-radius: 5px;" />
                     <p id="photoStatus">No photo selected</p>
                 </div>
             </div>
-
-            <button onclick="addFaculty()" class="submit-button">Send OTP & Verify Faculty</button>
+            <button onclick="addFaculty()" class="submit-button">Add Faculty</button>
         </section>
 
-        <section id="faculty-list" style="display: none;">
-            <h3>👥 Faculty List</h3>
-            <div id="facultyList"></div>
+        <section id="faculty-list-content" style="display: none;">
+            <h3>🧑‍🏫 Faculty List</h3>
+            <div id="facultyList">
+                <p>Loading faculty list...</p>
+            </div>
         </section>
 
-        <section id="pending-faculty" style="display: none;">
-            <h3>🕓 Pending Faculty List</h3>
-            <div id="pendingFacultyList"></div>
+        <section id="pending-faculty-list" style="display: none;">
+            <h3>⏳ Pending Faculty List</h3>
+            <div id="pendingFacultyList">
+                <p>Loading pending faculty list...</p>
+            </div>
         </section>
 
-        <section id="van-register">
-            <h3>🚐 Van Attendance Overview</h3>
-            <div id="vans"></div>
+        <section id="add-driver-content" style="display: none;">
+            <h3>➕ Add Driver</h3>
+            <div class="form-grid">
+                <input id="driverName" placeholder="Full Name" type="text" />
+                <input id="driverEmail" placeholder="Email" type="email" />
+                <input id="driverMobile" placeholder="Mobile Number" type="tel" />
+                <input id="driverLicense" placeholder="License Number" type="text" />
+                <div>
+                    <label for="driverDOJ">Date of Joining:</label>
+                    <input id="driverDOJ" type="date" />
+                </div>
+                <textarea id="driverAddress" placeholder="Address" rows="3" class="full-width"></textarea>
+                <div class="full-width">
+                    <button onclick="openPhotoDialog('driver')">📸 Upload/Capture Photo</button>
+                    <img id="driverPhotoPreview" src="https://via.placeholder.com/150?text=No+Photo" alt="Driver Profile Preview" style="display:none; max-width: 100px; max-height: 100px; margin-top: 10px; border-radius: 5px;" />
+                    <p id="driverPhotoStatus">No photo selected</p>
+                </div>
+            </div>
+            <button onclick="addDriver()" class="submit-button">Add Driver</button>
         </section>
-        
-        <section id="student-register" style="display: none;">
+
+        <section id="driver-list-content" style="display: none;">
+            <h3>🚌 Driver List</h3>
+            <div id="driver-list-container">
+                <p>Loading driver list...</p>
+            </div>
+        </section>
+
+        <section id="pending-driver-list" style="display: none;">
+            <h3>⏳ Pending Driver List</h3>
+            <div id="pendingDriverList">
+                <p>Loading pending driver list...</p>
+            </div>
+        </section>
+
+        <section id="add-student-content" style="display: none;">
             <h3>➕ Add Student</h3>
-            <p>Content for adding students will go here.</p>
+<div class="form-grid">
+
+
+                <input id="studentName" placeholder="Student Name" type="text" />
+                <input id="studentRollNo" placeholder="Roll Number" type="text" />
+                <input id="studentClass" placeholder="Class (e.g., 10A)" type="text" />
+                <input id="studentFatherName" placeholder="Father's Name" type="text" />
+                <input id="studentParentsMobile" placeholder="Parent's Mobile" type="tel" />
+                <select id="studentGender">
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select>
+                <div>
+                    <label for="studentVan">Assign Van:</label>
+                    <select id="studentVan">
+                        <option value="">Loading Vans...</option>
+                    </select>
+                </div>
+                <textarea id="studentAddress" placeholder="Address" class="full-width"></textarea>
+                <div>
+                    <label>Profile Photo (Optional):</label>
+                    <div class="photo-capture-area">
+                        <img id="studentPhotoPreview" src="https://via.placeholder.com/150?text=No+Photo" alt="Student Photo Preview" style="width: 150px; height: 150px; object-fit: cover; border-radius: 8px; margin-bottom: 10px;">
+                        <button onclick="openPhotoDialog('student')" class="button-secondary">Capture/Upload Photo</button>
+                        <input type="file" id="studentPhotoUpload" accept="image/*" style="display: none;" onchange="handleFileUpload(event, 'student')">
+                    </div>
+                </div>
+            </div>
+            <button onclick="addStudent()" class="submit-button">Add Student</button>
+        </section>
+
+	<section id="student-list-content" style="display: none;">
+            <h3>🧑‍🎓 Student List</h3>
+            <input type="text" id="studentSearchInput" onkeyup="filterStudentList()" placeholder="Search by Name, Class, Phone, Van, Gender, Father Name..." class="search-input">
+            <div id="studentList">
+                <p>Loading student list...</p>
+            </div>
+        </section>
+
+        <section id="add-van-content" style="display: none;">
+            <h3>➕ Add Van</h3>
+            <div class="form-grid">
+                <input id="vanNumber" placeholder="Van Number (e.g., TN01A1234)" type="text" />
+                <input id="vanModel" placeholder="Van Model (e.g., Force Traveller)" type="text" />
+                <input id="vanCapacity" placeholder="Seating Capacity" type="number" />
+                <input id="vanRoute" placeholder="Route (e.g., East Avenue, Gandhi Nagar)" type="text" class="full-width"/>
+                <div>
+                    <label for="assignDriver">Assign Driver:</label>
+                    <select id="assignDriver">
+                        <option value="">Loading Drivers...</option>
+                    </select>
+                </div>
+            </div>
+            <button onclick="addVan()" class="submit-button">Add Van</button>
+        </section>
+
+        <section id="van-list-content" style="display: none;">
+            <h3>🚐 Van List</h3>
+            <div id="vanList">
+                <p>Loading van list...</p>
+            </div>
         </section>
 
     </main>
